@@ -1,4 +1,8 @@
 export type DayType = "work" | "free" | "sick" | "vacation" | "other";
+export type LeaveType = "vacation" | "sick" | "public_holiday" | "time_off" | "other";
+export type LeaveAmount = "full_day" | "half_day" | "custom";
+export type PaidAbsenceBehavior = "target_zero" | "counts_as_target";
+export type RoundingMode = "off" | "5" | "10" | "15";
 
 export interface TimeEntry {
   id: number;
@@ -22,10 +26,29 @@ export interface DayOverride {
 export interface Settings {
   standardTargetMinutes: number;
   workdays: number[];
+  trackingStartDate: string | null;
   startBalanceMinutes: number;
   autoBreakEnabled: boolean;
   autoBreakThresholdMinutes: number;
   autoBreakMinutes: number;
+  autostartEnabled: boolean;
+  startMinimized: boolean;
+  closeToTray: boolean;
+  lowRamMode: boolean;
+  reminderLongSessionEnabled: boolean;
+  reminderLongSessionMinutes: number;
+  reminderClockOutEnabled: boolean;
+  reminderClockOutTime: string;
+  reminderNoTimeTodayEnabled: boolean;
+  reminderTargetReachedEnabled: boolean;
+  unusualSessionMinutes: number;
+  notifyUnusualSession: boolean;
+  roundingMode: RoundingMode;
+  annualVacationDays: number;
+  vacationCarryoverDays: number;
+  vacationYear: number;
+  defaultPaidAbsenceBehavior: PaidAbsenceBehavior;
+  lastExportAt: string | null;
 }
 
 export interface DaySummary {
@@ -54,4 +77,38 @@ export interface ImportExportPayload {
   settings: Record<string, string>;
   time_entries: TimeEntry[];
   day_overrides: DayOverride[];
+  leave_entries?: LeaveEntry[];
+}
+
+export interface LeaveEntry {
+  id: number;
+  type: LeaveType;
+  start_date: string;
+  end_date: string;
+  amount: LeaveAmount;
+  custom_minutes: number | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VacationOverview {
+  annualDays: number;
+  carryoverDays: number;
+  takenDays: number;
+  plannedDays: number;
+  remainingDays: number;
+}
+
+export interface Diagnostics {
+  appVersion: string;
+  tauriVersion: string;
+  databasePath: string;
+  timeEntryCount: number;
+  leaveEntryCount: number;
+  hasActiveSession: boolean;
+  lastExportAt: string | null;
+  autostartEnabled: boolean;
+  notificationPermission: string;
+  lowRamMode: boolean;
 }

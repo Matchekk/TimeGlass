@@ -110,10 +110,14 @@ nav {
 }
 
 .sidebar-meta {
-  margin-top: auto;
   padding: 16px;
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.07);
+}
+
+.sidebar-meta.compact {
+  margin-top: auto;
+  margin-bottom: 10px;
 }
 
 .sidebar-meta span,
@@ -302,6 +306,65 @@ h2 {
   background: rgba(255, 255, 255, 0.12);
 }
 
+.calendar-day.has-leave {
+  border-color: rgba(166, 237, 202, 0.26);
+}
+
+.calendar-day small {
+  color: rgba(166, 237, 202, 0.85);
+}
+
+.week-calendar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px;
+}
+
+.week-day-card {
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  color: #eef4ff;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid transparent;
+  border-radius: 18px;
+  padding: 14px;
+  text-align: left;
+}
+
+.week-day-card:hover,
+.week-day-card.active {
+  background: rgba(255, 255, 255, 0.11);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.week-day-card.has-leave {
+  border-color: rgba(166, 237, 202, 0.28);
+}
+
+.week-day-card span,
+.week-day-card small {
+  color: rgba(238, 244, 255, 0.64);
+}
+
+.week-day-card strong {
+  font-size: 34px;
+  line-height: 1;
+}
+
+.week-day-card em {
+  font-style: normal;
+  font-weight: 800;
+}
+
+.week-day-card b {
+  color: rgba(166, 237, 202, 0.9);
+  font-size: 12px;
+}
+
 .month-card-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -314,10 +377,21 @@ h2 {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  color: #eef4ff;
+  text-align: left;
 }
 
 .month-card strong {
   font-size: 34px;
+}
+
+.month-card-button {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.month-card-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-1px);
 }
 
 .form-grid,
@@ -446,6 +520,7 @@ select:focus {
 
 .error-banner,
 .inline-error,
+.inline-warning,
 .success-banner {
   border-radius: 16px;
   padding: 12px 14px;
@@ -462,6 +537,43 @@ select:focus {
   color: #d8ffe9;
   background: rgba(66, 155, 111, 0.18);
   border: 1px solid rgba(148, 236, 190, 0.22);
+}
+
+.inline-warning {
+  color: #ffe8bd;
+  background: rgba(178, 125, 42, 0.2);
+  border: 1px solid rgba(246, 190, 116, 0.25);
+  margin-top: 14px;
+}
+
+.quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 18px;
+}
+
+.leave-line,
+.diagnostics-line {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.055);
+  margin-bottom: 8px;
+}
+
+.leave-line span,
+.diagnostics-line span {
+  display: block;
+  color: rgba(238, 244, 255, 0.62);
+  margin-top: 4px;
+}
+
+.diagnostics-line {
+  grid-template-columns: 1fr 2fr;
 }
 
 .muted {
@@ -494,6 +606,7 @@ select:focus {
 
   .card-grid,
   .card-grid.three,
+  .week-calendar,
   .month-card-grid,
   .form-grid,
   .settings-form {

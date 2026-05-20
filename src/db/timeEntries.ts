@@ -2,7 +2,8 @@ import type { DayOverride, ImportExportPayload, TimeEntry } from "../types";
 import { dateRangeForKeys } from "../lib/dateUtils";
 import { isEntryValid } from "../lib/timeCalculations";
 import { getDb } from "./schema";
-import { getRawSettings, replaceRawSettings } from "./settings";
+import { getRawSettings, replaceRawSettings, setSetting } from "./settings";
+import { getLeaveEntries, replaceLeaveEntries } from "./leaveEntries";
 
 export async function getActiveEntry(): Promise<TimeEntry | null> {
   const db = await getDb();
@@ -42,6 +43,12 @@ export async function getEntriesForDateKeys(dateKeys: string[]): Promise<TimeEnt
 export async function getAllEntries(): Promise<TimeEntry[]> {
   const db = await getDb();
   return db.select<TimeEntry[]>("SELECT * FROM time_entries ORDER BY start_time");
+}
+
+export async function countTimeEntries(): Promise<number> {
+  const db = await getDb();
+  const rows = await db.select<Array<{ count: number }>>("SELECT COUNT(*) as count FROM time_entries");
+  return rows[0]?.count ?? 0;
 }
 
 export async function addEntry(startIso: string, endIso: string | null, note: string | null): Promise<void> {
@@ -106,12 +113,15 @@ export async function saveDayOverride(input: Omit<DayOverride, "created_at" | "u
 }
 
 export async function exportData(): Promise<ImportExportPayload> {
+  const exportedAt = new Date().toISOString();
+  await setSetting("last_export_at", exportedAt);
   return {
     version: 1,
-    exportedAt: new Date().toISOString(),
+    exportedAt,
     settings: await getRawSettings(),
     time_entries: await getAllEntries(),
     day_overrides: await getAllOverrides(),
+    leave_entries: await getLeaveEntries(),
   };
 }
 
@@ -145,4 +155,6 @@ export async function importData(payload: ImportExportPayload): Promise<void> {
       ],
     );
   }
+
+  await replaceLeaveEntries(payload.leave_entries ?? []);
 }

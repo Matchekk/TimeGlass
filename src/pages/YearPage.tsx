@@ -1,12 +1,13 @@
 import { StatCard } from "../components/StatCard";
-import { getMonthDates } from "../lib/dateUtils";
+import { getMonthDates, hasMonthStarted } from "../lib/dateUtils";
 import { formatMinutes } from "../lib/formatting";
 import { summarizePeriod } from "../lib/timeCalculations";
 import type { AppData } from "../App";
 
-export function YearPage({ data }: { data: AppData; refresh: () => Promise<void> }) {
+export function YearPage({ data, onMonthSelect }: { data: AppData; refresh: () => Promise<void>; onMonthSelect: (monthDate: Date) => void }) {
   const now = new Date();
-  const total = summarizePeriod(data.year);
+  const visibleYearDays = data.year.filter((day) => hasMonthStarted(new Date(`${day.date}T00:00:00`), now));
+  const total = summarizePeriod(visibleYearDays);
   return (
     <div className="page-stack">
       <div className="section-heading">
@@ -25,13 +26,13 @@ export function YearPage({ data }: { data: AppData; refresh: () => Promise<void>
           const date = new Date(now.getFullYear(), month, 1);
           const keys = getMonthDates(date);
           const summaries = data.year.filter((day) => keys.includes(day.date));
-          const summary = summarizePeriod(summaries);
+          const summary = hasMonthStarted(date, now) ? summarizePeriod(summaries) : { netMinutes: 0, targetMinutes: 0, differenceMinutes: 0 };
           return (
-            <article className="glass-card month-card" key={month}>
+            <button className="glass-card month-card month-card-button" key={month} onClick={() => onMonthSelect(date)}>
               <span>{date.toLocaleDateString("de-DE", { month: "long" })}</span>
               <strong className={summary.differenceMinutes >= 0 ? "positive-text" : "negative-text"}>{formatMinutes(summary.differenceMinutes, true)}</strong>
               <small>{formatMinutes(summary.netMinutes)} netto</small>
-            </article>
+            </button>
           );
         })}
       </section>

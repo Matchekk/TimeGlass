@@ -1,7 +1,7 @@
 import { Plus, Save, Trash2 } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { addEntry, deleteEntry, saveDayOverride, updateEntry } from "../db/timeEntries";
-import { dateTimeLocalValue, localInputToIso } from "../lib/dateUtils";
+import { dateTimeLocalValue, localInputToIso, toDateKey } from "../lib/dateUtils";
 import { formatClock, minutesToInput, parseDurationToMinutes } from "../lib/formatting";
 import type { DayOverride, DaySummary, DayType, TimeEntry } from "../types";
 
@@ -29,9 +29,20 @@ export function DayDetail({ day, entries, override, onChanged }: Props) {
   const [newStart, setNewStart] = useState(`${day.date}T09:00`);
   const [newEnd, setNewEnd] = useState(`${day.date}T17:00`);
   const [newNote, setNewNote] = useState("");
+  const isFriday = new Date(`${day.date}T00:00:00`).getDay() === 5;
+
+  useEffect(() => {
+    setManualBreak(minutesToInput(override?.manual_break_minutes));
+    setTarget(minutesToInput(override?.target_minutes));
+    setDayType(override?.day_type ?? "work");
+    setNote(override?.note ?? "");
+    setNewStart(`${day.date}T09:00`);
+    setNewEnd(`${day.date}T17:00`);
+    setNewNote("");
+  }, [day.date, override?.manual_break_minutes, override?.target_minutes, override?.day_type, override?.note]);
 
   const dayEntries = useMemo(
-    () => entries.filter((entry) => entry.start_time.slice(0, 10) === day.date).sort((a, b) => a.start_time.localeCompare(b.start_time)),
+    () => entries.filter((entry) => toDateKey(new Date(entry.start_time)) === day.date).sort((a, b) => a.start_time.localeCompare(b.start_time)),
     [entries, day.date],
   );
 
@@ -66,6 +77,20 @@ export function DayDetail({ day, entries, override, onChanged }: Props) {
     });
   }
 
+  function applyFridayPause(minutes: number) {
+    const value = minutesToInput(minutes);
+    setManualBreak(value);
+    void guard(async () => {
+      await saveDayOverride({
+        date: day.date,
+        manual_break_minutes: minutes,
+        target_minutes: target.trim() ? parseDurationToMinutes(target) : null,
+        day_type: dayType,
+        note: note.trim() || null,
+      });
+    });
+  }
+
   return (
     <section className="glass-panel day-detail">
       <div className="section-heading">
@@ -96,6 +121,15 @@ export function DayDetail({ day, entries, override, onChanged }: Props) {
           Notiz
           <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Homeoffice, krank, Arzttermin..." />
         </label>
+        {isFriday && (
+          <div className="friday-options wide">
+            <span className="field-title">Freitag</span>
+            <div className="button-row">
+              <button className="secondary-button" type="button" onClick={() => applyFridayPause(0)}>Früher Schluss · keine Pause</button>
+              <button className="secondary-button" type="button" onClick={() => applyFridayPause(60)}>1 Stunde Pause · länger arbeiten</button>
+            </div>
+          </div>
+        )}
         <button className="secondary-button wide" type="submit"><Save size={16} /> Speichern</button>
       </form>
 

@@ -49,7 +49,29 @@ async function migrate(db: Database): Promise<void> {
   `);
 
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS leave_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      amount TEXT NOT NULL,
+      custom_minutes INTEGER,
+      note TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      CHECK (end_date >= start_date),
+      CHECK (amount IN ('full_day', 'half_day', 'custom')),
+      CHECK (type IN ('vacation', 'sick', 'public_holiday', 'time_off', 'other'))
+    )
+  `);
+
+  await db.execute(`
     CREATE INDEX IF NOT EXISTS idx_time_entries_start_time
     ON time_entries(start_time)
+  `);
+
+  await db.execute(`
+    CREATE INDEX IF NOT EXISTS idx_leave_entries_dates
+    ON leave_entries(start_date, end_date)
   `);
 }

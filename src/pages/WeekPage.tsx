@@ -4,6 +4,7 @@ import { formatDate, formatMinutes } from "../lib/formatting";
 import { summarizePeriod } from "../lib/timeCalculations";
 import type { AppData } from "../App";
 import { useState } from "react";
+import { findLeaveForDate, leaveTypeLabel } from "../lib/leaveCalculations";
 
 export function WeekPage({ data, refresh }: { data: AppData; refresh: () => Promise<void> }) {
   const [selected, setSelected] = useState(data.today.date);
@@ -24,6 +25,25 @@ export function WeekPage({ data, refresh }: { data: AppData; refresh: () => Prom
         <StatCard label="Soll" value={formatMinutes(total.targetMinutes)} />
         <StatCard label="Wochensumme" value={formatMinutes(total.differenceMinutes, true)} tone={total.differenceMinutes >= 0 ? "positive" : "negative"} />
       </div>
+      <section className="week-calendar glass-panel">
+        {data.week.map((item) => {
+          const leave = findLeaveForDate(data.leaveEntries, item.date);
+          const date = new Date(`${item.date}T00:00:00`);
+          return (
+            <button
+              className={`week-day-card ${item.date === selected ? "active" : ""} ${leave ? "has-leave" : ""}`}
+              key={item.date}
+              onClick={() => setSelected(item.date)}
+            >
+              <span>{date.toLocaleDateString("de-DE", { weekday: "short" })}</span>
+              <strong>{date.getDate()}</strong>
+              <small>{formatMinutes(item.netMinutes)} / {formatMinutes(item.targetMinutes)}</small>
+              <em className={item.differenceMinutes >= 0 ? "positive-text" : "negative-text"}>{formatMinutes(item.differenceMinutes, true)}</em>
+              {leave && <b>{leaveTypeLabel(leave.type)}</b>}
+            </button>
+          );
+        })}
+      </section>
       <section className="glass-panel table-panel">
         {data.week.map((item) => (
           <button className={item.date === selected ? "day-line active" : "day-line"} key={item.date} onClick={() => setSelected(item.date)}>

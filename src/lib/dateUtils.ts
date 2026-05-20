@@ -63,6 +63,11 @@ export function isSameMonth(dateKey: string, month: Date): boolean {
   return date.getFullYear() === month.getFullYear() && date.getMonth() === month.getMonth();
 }
 
+export function hasMonthStarted(month: Date, now = new Date()): boolean {
+  const monthStart = new Date(month.getFullYear(), month.getMonth(), 1);
+  return monthStart <= startOfLocalDay(now);
+}
+
 export function dateTimeLocalValue(iso: string): string {
   const date = new Date(iso);
   const offset = date.getTimezoneOffset() * 60_000;
