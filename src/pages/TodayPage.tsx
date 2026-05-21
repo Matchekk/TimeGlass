@@ -5,6 +5,13 @@ import type { AppData } from "../App";
 
 export function TodayPage({ data, refresh }: { data: AppData; refresh: () => Promise<void> }) {
   const override = data.overrides.find((item) => item.date === data.today.date);
+  const dayTypeLabels: Record<string, string> = {
+    work: "Arbeitstag",
+    free: "Arbeitsfrei (Soll 0)",
+    sick: "Krank",
+    vacation: "Urlaub",
+    other: "Sonstiges",
+  };
   return (
     <div className="page-stack">
       <div className="section-heading">
@@ -21,7 +28,7 @@ export function TodayPage({ data, refresh }: { data: AppData; refresh: () => Pro
         <StatCard label="Netto" value={formatMinutes(data.today.netMinutes)} />
         <StatCard label="Soll" value={formatMinutes(data.today.targetMinutes)} />
         <StatCard label="Differenz" value={formatMinutes(data.today.differenceMinutes, true)} tone={data.today.differenceMinutes >= 0 ? "positive" : "negative"} />
-        <StatCard label="Tagesart" value={data.today.dayType} detail={data.today.note ?? undefined} />
+        <StatCard label="Tagesart" value={dayTypeLabels[data.today.dayType] ?? data.today.dayType} detail={data.today.note ?? undefined} />
       </div>
       <DayDetail day={data.today} entries={data.entries} override={override} onChanged={refresh} />
     </div>

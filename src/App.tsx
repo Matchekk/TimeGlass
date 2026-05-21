@@ -232,7 +232,7 @@ export function App() {
     const common = { data: liveData, refresh };
     if (page === "today") return <TodayPage {...common} />;
     if (page === "week") return <WeekPage {...common} />;
-    if (page === "month") return <MonthPage {...common} monthDate={selectedMonth} />;
+    if (page === "month") return <MonthPage {...common} monthDate={selectedMonth} onMonthChange={setSelectedMonth} />;
     if (page === "year") {
       return (
         <YearPage
@@ -256,36 +256,39 @@ export function App() {
     <div className="app-shell">
       <aside className="sidebar glass-panel">
         <div className="brand">
-          <Clock3 size={30} />
+          <Clock3 size={30} aria-hidden="true" />
           <div>
             <strong>TimeGlass</strong>
             <span>Private Gleitzeit</span>
           </div>
         </div>
-        <nav>
+        <nav aria-label="Hauptnavigation">
           {nav.map(({ page: navPage, label, icon: Icon }) => (
             <button
+              type="button"
               className={page === navPage ? "nav-item active" : "nav-item"}
               key={navPage}
+              aria-current={page === navPage ? "page" : undefined}
+              aria-label={label}
               onClick={() => {
                 if (navPage === "month") setSelectedMonth(new Date());
                 setPage(navPage);
               }}
             >
-              <Icon size={18} />
+              <Icon size={18} aria-hidden="true" />
               <span>{label}</span>
             </button>
           ))}
         </nav>
         {todayRemaining != null && (
           <div className="sidebar-meta compact">
-            <span>Heute fehlt</span>
+            <span>Heute noch offen</span>
             <strong>{formatMinutes(todayRemaining)}</strong>
           </div>
         )}
         {weekTotal && (
           <div className="sidebar-meta">
-            <span>Woche</span>
+            <span>Wochenbilanz</span>
             <strong>{weekTotal.differenceMinutes >= 0 ? "+" : ""}{Math.round(weekTotal.differenceMinutes / 60 * 10) / 10} h</strong>
           </div>
         )}

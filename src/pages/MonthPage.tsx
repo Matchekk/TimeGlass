@@ -1,13 +1,35 @@
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { DayDetail } from "../components/DayDetail";
 import { StatCard } from "../components/StatCard";
 import { getCalendarGridDates, hasMonthStarted, isSameMonth } from "../lib/dateUtils";
-import { formatMinutes } from "../lib/formatting";
+import { formatDateSpoken, formatMinutes, formatMinutesSpoken } from "../lib/formatting";
 import { summarizePeriod } from "../lib/timeCalculations";
 import type { AppData } from "../App";
 import { findLeaveForDate, leaveTypeLabel } from "../lib/leaveCalculations";
+import type { DaySummary } from "../types";
 
-export function MonthPage({ data, refresh, monthDate }: { data: AppData; refresh: () => Promise<void>; monthDate: Date }) {
+function calendarButtonLabel(dateKey: string, item: DaySummary | undefined, leaveLabel: string | null, selected: boolean): string {
+  return [
+    formatDateSpoken(dateKey),
+    leaveLabel ?? (item ? "Arbeitstag" : null),
+    item ? `Netto ${formatMinutesSpoken(item.netMinutes)}` : null,
+    item ? `Differenz ${formatMinutesSpoken(item.differenceMinutes, true)}` : null,
+    selected ? "ausgewählt" : null,
+  ].filter(Boolean).join(", ");
+}
+
+export function MonthPage({
+  data,
+  refresh,
+  monthDate,
+  onMonthChange,
+}: {
+  data: AppData;
+  refresh: () => Promise<void>;
+  monthDate: Date;
+  onMonthChange: (monthDate: Date) => void;
+}) {
   const [selected, setSelected] = useState(data.today.date);
   const gridDates = getCalendarGridDates(monthDate);
   const monthIsVisible = hasMonthStarted(monthDate);
@@ -29,12 +51,24 @@ export function MonthPage({ data, refresh, monthDate }: { data: AppData; refresh
     setSelected(monthSummaries[0]?.date ?? data.today.date);
   }, [data.today.date, monthDate.getFullYear(), monthDate.getMonth()]);
 
+  function shiftMonth(offset: number) {
+    onMonthChange(new Date(monthDate.getFullYear(), monthDate.getMonth() + offset, 1));
+  }
+
   return (
     <div className="page-stack">
       <div className="section-heading">
         <div>
           <span>Monat</span>
           <h1>{monthDate.toLocaleDateString("de-DE", { month: "long", year: "numeric" })}</h1>
+        </div>
+        <div className="month-nav" aria-label="Monat wechseln">
+          <button className="icon-button" type="button" aria-label="Vorherigen Monat anzeigen" title="Vorheriger Monat" onClick={() => shiftMonth(-1)}>
+            <ChevronLeft size={18} aria-hidden="true" />
+          </button>
+          <button className="icon-button" type="button" aria-label="Nächsten Monat anzeigen" title="Nächster Monat" onClick={() => shiftMonth(1)}>
+            <ChevronRight size={18} aria-hidden="true" />
+          </button>
         </div>
       </div>
       <div className="card-grid three">
@@ -47,12 +81,26 @@ export function MonthPage({ data, refresh, monthDate }: { data: AppData; refresh
         {gridDates.map((dateKey) => {
           const item = monthMap.get(dateKey);
           const leave = findLeaveForDate(data.leaveEntries, dateKey);
+          const leaveLabel = leave ? leaveTypeLabel(leave.type) : null;
           const outside = !isSameMonth(dateKey, monthDate);
+          const selectedDay = selected === dateKey;
           return (
-            <button className={`calendar-day ${outside ? "outside" : ""} ${selected === dateKey ? "active" : ""} ${leave ? "has-leave" : ""}`} key={dateKey} onClick={() => setSelected(dateKey)}>
+            <button
+              className={`calendar-day ${outside ? "outside" : ""} ${selectedDay ? "active" : ""} ${leave ? "has-leave" : ""}`}
+              type="button"
+              key={dateKey}
+              aria-label={calendarButtonLabel(dateKey, item, leaveLabel, selectedDay)}
+              onClick={() => setSelected(dateKey)}
+            >
               <strong>{Number(dateKey.slice(8, 10))}</strong>
-              {item && <span className={item.differenceMinutes >= 0 ? "positive-text" : "negative-text"}>{formatMinutes(item.differenceMinutes, true)}</span>}
-              {leave && <small>{leaveTypeLabel(leave.type)}</small>}
+              {item && (
+                <span className={item.differenceMinutes >= 0 ? "positive-text" : "negative-text"}>
+                  {formatMinutes(item.differenceMinutes, true)}
+                  <small className={item.differenceMinutes >= 0 ? "delta-word positive-badge" : "delta-word negative-badge"}>{item.differenceMinutes >= 0 ? "Plus" : "Minus"}</small>
+                </span>
+              )}
+              {selectedDay && <small className="state-badge">Ausgewählt</small>}
+              {leaveLabel && <small className="state-badge leave-badge">{leaveLabel}</small>}
             </button>
           );
         })}

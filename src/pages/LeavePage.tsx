@@ -11,20 +11,20 @@ const leaveTypes: Array<{ value: LeaveType; label: string }> = [
   { value: "vacation", label: "Urlaub" },
   { value: "sick", label: "Krank" },
   { value: "public_holiday", label: "Feiertag" },
-  { value: "time_off", label: "Frei" },
+  { value: "time_off", label: "Arbeitsfrei" },
   { value: "other", label: "Sonstiges" },
 ];
 
 function createEmptyForm() {
   const today = toDateKey();
   return {
-  id: null as number | null,
-  type: "vacation" as LeaveType,
-  start_date: today,
-  end_date: today,
-  amount: "full_day" as LeaveAmount,
-  custom_minutes: "",
-  note: "",
+    id: null as number | null,
+    type: "vacation" as LeaveType,
+    start_date: today,
+    end_date: today,
+    amount: "full_day" as LeaveAmount,
+    custom_minutes: "",
+    note: "",
   };
 }
 
@@ -73,6 +73,8 @@ export function LeavePage({ data, refresh }: { data: AppData; refresh: () => Pro
   }
 
   async function remove(id: number) {
+    const confirmed = window.confirm("Abwesenheit wirklich löschen?\nDieser Eintrag wird aus der Übersicht entfernt.");
+    if (!confirmed) return;
     await deleteLeaveEntry(id);
     setMessage("Abwesenheit gelöscht.");
     await refresh();
@@ -126,7 +128,7 @@ export function LeavePage({ data, refresh }: { data: AppData; refresh: () => Pro
           Notiz
           <input value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} />
         </label>
-        <button className="secondary-button wide" type="submit"><Plus size={16} /> {form.id ? "Abwesenheit speichern" : "Abwesenheit eintragen"}</button>
+        <button className="secondary-button wide" type="submit"><Plus size={16} aria-hidden="true" /> {form.id ? "Abwesenheit speichern" : "Abwesenheit eintragen"}</button>
       </form>
 
       <section className="glass-panel table-panel">
@@ -136,8 +138,8 @@ export function LeavePage({ data, refresh }: { data: AppData; refresh: () => Pro
               <strong>{leaveTypeLabel(entry.type)} · {entry.start_date} bis {entry.end_date}</strong>
               <span>{entry.amount === "half_day" ? "Halber Tag" : entry.amount === "custom" ? `${entry.custom_minutes ?? 0} Minuten` : "Ganzer Tag"}{entry.note ? ` · ${entry.note}` : ""}</span>
             </div>
-            <button className="icon-button" title="Bearbeiten" onClick={() => edit(entry)}><Edit3 size={16} /></button>
-            <button className="icon-button" title="Löschen" onClick={() => void remove(entry.id)}><Trash2 size={16} /></button>
+            <button className="icon-button" type="button" title="Bearbeiten" aria-label={`${leaveTypeLabel(entry.type)} bearbeiten`} onClick={() => edit(entry)}><Edit3 size={16} aria-hidden="true" /></button>
+            <button className="icon-button danger-button" type="button" title="Löschen" aria-label={`${leaveTypeLabel(entry.type)} löschen`} onClick={() => void remove(entry.id)}><Trash2 size={16} aria-hidden="true" /></button>
           </div>
         ))}
         {data.leaveEntries.length === 0 && <p className="muted">Noch keine Abwesenheiten erfasst.</p>}

@@ -69,7 +69,7 @@ export function SettingsPage({ data, refresh }: { data: AppData; refresh: () => 
       if (!granted) {
         const permission = await requestPermission();
         if (permission !== "granted") {
-          setMessage("Einstellungen gespeichert. Notifications sind nicht erlaubt, Reminder bleiben ohne Systemmeldung.");
+          setMessage("Einstellungen gespeichert. Benachrichtigungen sind nicht erlaubt, Reminder bleiben ohne Systemmeldung.");
         }
       }
     }
@@ -119,11 +119,23 @@ export function SettingsPage({ data, refresh }: { data: AppData; refresh: () => 
   async function importJson(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
-    const payload = JSON.parse(await file.text()) as ImportExportPayload;
-    await importData(payload);
-    setMessage("Import abgeschlossen.");
-    await refresh();
-    event.target.value = "";
+    const confirmed = window.confirm(
+      `JSON-Import starten?\n\nDatei: ${file.name}\n\nImport kann bestehende TimeGlass-Daten verändern. Erstelle vorher ein Backup, wenn du unsicher bist.`,
+    );
+    if (!confirmed) {
+      event.target.value = "";
+      return;
+    }
+    try {
+      const payload = JSON.parse(await file.text()) as ImportExportPayload;
+      await importData(payload);
+      setMessage("Import abgeschlossen. Die importierten Daten sind jetzt sichtbar.");
+      await refresh();
+    } catch (err) {
+      setMessage(err instanceof Error ? `Import fehlgeschlagen: ${err.message}` : "Import fehlgeschlagen. Bitte eine gültige TimeGlass-JSON-Datei auswählen.");
+    } finally {
+      event.target.value = "";
+    }
   }
 
   return (
@@ -175,7 +187,7 @@ export function SettingsPage({ data, refresh }: { data: AppData; refresh: () => 
           Auto-Pause Dauer
           <input value={formatMinutes(settings.autoBreakMinutes)} onChange={(event) => patch({ autoBreakMinutes: parseDurationToMinutes(event.target.value) ?? settings.autoBreakMinutes })} />
         </label>
-        <button className="secondary-button wide" type="submit"><Save size={16} /> Einstellungen speichern</button>
+        <button className="secondary-button wide" type="submit"><Save size={16} aria-hidden="true" /> Einstellungen speichern</button>
       </form>
 
       <section className="glass-panel settings-form">
@@ -205,13 +217,13 @@ export function SettingsPage({ data, refresh }: { data: AppData; refresh: () => 
             <option value="15">Auf 15 Minuten</option>
           </select>
         </label>
-        <button className="secondary-button wide" type="button" onClick={() => void persistSettings("System gespeichert.")}><Save size={16} /> System speichern</button>
+        <button className="secondary-button wide" type="button" onClick={() => void persistSettings("System gespeichert.")}><Save size={16} aria-hidden="true" /> System speichern</button>
       </section>
 
       <section className="glass-panel settings-form">
         <h2 className="wide">Reminder</h2>
         {remindersEnabled && diagnostics.notificationPermission !== "ja" && (
-          <div className="inline-warning wide">Notifications sind noch nicht erlaubt. TimeGlass fragt erst beim Speichern der Reminder nach.</div>
+          <div className="inline-warning wide">Benachrichtigungen sind noch nicht erlaubt. TimeGlass fragt erst beim Speichern der Reminder nach.</div>
         )}
         <label className="switch-row wide">
           <input type="checkbox" checked={settings.reminderLongSessionEnabled} onChange={(event) => patch({ reminderLongSessionEnabled: event.target.checked })} />
@@ -243,9 +255,9 @@ export function SettingsPage({ data, refresh }: { data: AppData; refresh: () => 
         </label>
         <label className="switch-row wide">
           <input type="checkbox" checked={settings.notifyUnusualSession} onChange={(event) => patch({ notifyUnusualSession: event.target.checked })} />
-          Lange Session zusätzlich als Notification
+          Lange Session zusätzlich als Benachrichtigung
         </label>
-        <button className="secondary-button wide" type="button" onClick={() => void persistSettings("Reminder gespeichert.")}><Save size={16} /> Reminder speichern</button>
+        <button className="secondary-button wide" type="button" onClick={() => void persistSettings("Reminder gespeichert.")}><Save size={16} aria-hidden="true" /> Reminder speichern</button>
       </section>
 
       <section className="glass-panel settings-form">
@@ -269,7 +281,7 @@ export function SettingsPage({ data, refresh }: { data: AppData; refresh: () => 
             <option value="counts_as_target">Als Sollzeit erfüllt markieren</option>
           </select>
         </label>
-        <button className="secondary-button wide" type="button" onClick={() => void persistSettings("Urlaubseinstellungen gespeichert.")}><Save size={16} /> Urlaub speichern</button>
+        <button className="secondary-button wide" type="button" onClick={() => void persistSettings("Urlaubseinstellungen gespeichert.")}><Save size={16} aria-hidden="true" /> Urlaub speichern</button>
       </section>
 
       <section className="glass-panel settings-form">
@@ -280,10 +292,10 @@ export function SettingsPage({ data, refresh }: { data: AppData; refresh: () => 
         </label>
         <p className="muted wide">Regelmäßige JSON-Backups sind empfohlen. Es gibt keine Cloud-Sicherung.</p>
         <div className="button-row wide">
-          <button className="secondary-button" onClick={() => void exportCsv()}><Download size={16} /> CSV exportieren</button>
-          <button className="secondary-button" onClick={() => void exportJson()}><FileJson size={16} /> JSON exportieren</button>
-          <button className="secondary-button" onClick={() => void exportJson()}><FileJson size={16} /> Backup jetzt erstellen</button>
-          <button className="secondary-button" onClick={() => fileInput.current?.click()}><Upload size={16} /> JSON importieren</button>
+          <button className="secondary-button" type="button" onClick={() => void exportCsv()}><Download size={16} aria-hidden="true" /> CSV exportieren</button>
+          <button className="secondary-button" type="button" onClick={() => void exportJson()}><FileJson size={16} aria-hidden="true" /> JSON exportieren</button>
+          <button className="secondary-button" type="button" onClick={() => void exportJson()}><FileJson size={16} aria-hidden="true" /> Backup jetzt erstellen</button>
+          <button className="secondary-button" type="button" onClick={() => fileInput.current?.click()}><Upload size={16} aria-hidden="true" /> JSON importieren</button>
           <input ref={fileInput} hidden type="file" accept="application/json" onChange={(event) => void importJson(event)} />
         </div>
       </section>
@@ -298,7 +310,7 @@ export function SettingsPage({ data, refresh }: { data: AppData; refresh: () => 
         <DiagnosticsLine label="Aktive Session" value={data.entries.some((entry) => !entry.end_time) ? "ja" : "nein"} />
         <DiagnosticsLine label="Letzter Export" value={data.settings.lastExportAt || "-"} />
         <DiagnosticsLine label="Autostart aktiv" value={diagnostics.autostartActive ? "ja" : "nein"} />
-        <DiagnosticsLine label="Notifications erlaubt" value={diagnostics.notificationPermission} />
+        <DiagnosticsLine label="Benachrichtigungen erlaubt" value={diagnostics.notificationPermission} />
         <DiagnosticsLine label="Low-RAM-Modus" value={settings.lowRamMode ? "ja" : "nein"} />
       </section>
     </div>

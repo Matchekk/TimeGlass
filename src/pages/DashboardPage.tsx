@@ -23,6 +23,19 @@ export function DashboardPage({ data, refresh, navigate }: { data: AppData; refr
     [data.allDays, data.entries, data.settings, data.today],
   );
 
+  async function markTodayFree() {
+    const confirmed = window.confirm("Heute wirklich als arbeitsfrei setzen?\nDie Sollzeit für heute wird auf 0 gesetzt.");
+    if (!confirmed) return;
+    await saveDayOverride({
+      date: data.today.date,
+      manual_break_minutes: null,
+      target_minutes: 0,
+      day_type: "free",
+      note: data.today.note,
+    });
+    await refresh();
+  }
+
   return (
     <div className="page-stack">
       <header className="hero glass-panel">
@@ -38,7 +51,7 @@ export function DashboardPage({ data, refresh, navigate }: { data: AppData; refr
         <PrimaryPunchButton activeEntry={activeEntry} onDone={refresh} onError={setError} />
       </header>
 
-      <div className="card-grid">
+      <div className="card-grid dashboard-grid">
         <StatCard label="Status" value={activeEntry ? "Eingestempelt" : "Ausgestempelt"} detail={activeEntry ? formatClock(activeEntry.start_time) : "Keine aktive Session"} tone={activeEntry ? "positive" : "neutral"} />
         <StatCard label="Heute" value={formatMinutes(data.today.netMinutes)} detail={<DiffValue minutes={data.today.differenceMinutes} />} tone={data.today.differenceMinutes >= 0 ? "positive" : "negative"} />
         <StatCard label="Diese Woche" value={formatMinutes(week.netMinutes)} detail={<DiffValue minutes={week.differenceMinutes} />} tone={week.differenceMinutes >= 0 ? "positive" : "negative"} />
@@ -54,19 +67,24 @@ export function DashboardPage({ data, refresh, navigate }: { data: AppData; refr
             <h2>{leaveEstimate.targetReached ? "Tagesziel erreicht" : "Tagesziel noch offen"}</h2>
           </div>
           <div className="leave-calculator-grid">
-            <StatCard
-              label="Bei 0:00 Tagesdifferenz"
-              value={leaveEstimate.leaveAtZero ? formatClock(leaveEstimate.leaveAtZero.toISOString()) : "-"}
-              detail={leaveEstimate.minutesUntilZero > 0 ? `${formatMinutes(leaveEstimate.minutesUntilZero)} Rest` : "jetzt moeglich"}
-              tone={leaveEstimate.targetReached ? "positive" : "neutral"}
-            />
-            <div className="glass-card stat-card">
-              <span>Gewuenschtes Plus</span>
-              <input value={desiredPlus} onChange={(event) => setDesiredPlus(event.target.value)} aria-label="Gewuenschtes Plus" />
-              <strong>{leaveEstimate.leaveAtDesiredPlus ? formatClock(leaveEstimate.leaveAtDesiredPlus.toISOString()) : "-"}</strong>
-              <small>{formatMinutes(parseDurationToMinutes(desiredPlus) ?? 30, true)}</small>
+            <div className={`glass-card leave-mini-card ${leaveEstimate.targetReached ? "positive" : ""}`}>
+              <span>Bei 0:00 Tagesdifferenz</span>
+              <strong>{leaveEstimate.leaveAtZero ? formatClock(leaveEstimate.leaveAtZero.toISOString()) : "-"}</strong>
+              <small>{leaveEstimate.minutesUntilZero > 0 ? `${formatMinutes(leaveEstimate.minutesUntilZero)} Rest` : "jetzt möglich"}</small>
             </div>
-            <StatCard label="Tagesziel erreicht" value={leaveEstimate.targetReached ? "Ja" : "Nein"} detail={`Netto ${formatMinutes(data.today.netMinutes)}`} tone={leaveEstimate.targetReached ? "positive" : "negative"} />
+            <div className="glass-card leave-mini-card leave-plus-card">
+              <label>
+                Gewünschtes Plus
+                <input value={desiredPlus} onChange={(event) => setDesiredPlus(event.target.value)} inputMode="numeric" aria-describedby="desired-plus-help" />
+              </label>
+              <strong>{leaveEstimate.leaveAtDesiredPlus ? formatClock(leaveEstimate.leaveAtDesiredPlus.toISOString()) : "-"}</strong>
+              <small id="desired-plus-help">{formatMinutes(parseDurationToMinutes(desiredPlus) ?? 30, true)} Zielpuffer</small>
+            </div>
+            <div className={`glass-card leave-mini-card ${leaveEstimate.targetReached ? "positive" : "negative"}`}>
+              <span>Tagesziel</span>
+              <strong>{leaveEstimate.targetReached ? "Ja" : "Nein"}</strong>
+              <small>Netto {formatMinutes(data.today.netMinutes)}</small>
+            </div>
           </div>
         </section>
       )}
@@ -74,11 +92,11 @@ export function DashboardPage({ data, refresh, navigate }: { data: AppData; refr
       {suspiciousDays.length > 0 && (
         <section className="glass-panel quality-panel">
           <div>
-            <span className="eyebrow">Datenqualitaet</span>
-            <h2>Bitte kurz pruefen</h2>
+            <span className="eyebrow">Auffällige Tage</span>
+            <h2>Bitte kurz prüfen</h2>
           </div>
           {suspiciousDays.map((issue) => (
-            <button className="quality-line" key={`${issue.type}-${issue.date}`} onClick={() => navigate("today")}>
+            <button className="quality-line" type="button" key={`${issue.type}-${issue.date}`} onClick={() => navigate("today")}>
               <strong>{issue.date}</strong>
               <span>{issue.message}</span>
             </button>
@@ -86,23 +104,18 @@ export function DashboardPage({ data, refresh, navigate }: { data: AppData; refr
         </section>
       )}
 
-      <section className="glass-panel quick-actions">
-        <button className="secondary-button" onClick={() => navigate("today")}>Heute korrigieren</button>
-        <button className="secondary-button" onClick={() => navigate("today")}>Pause eintragen</button>
-        <button className="secondary-button" onClick={() => navigate("leave")}>Urlaub eintragen</button>
-        <button className="secondary-button" onClick={() => navigate("today")}>Notiz für heute</button>
-        <button className="secondary-button" onClick={() => navigate("today")}>Letzte Session bearbeiten</button>
+      <section className="glass-panel quick-actions" aria-label="Schnellaktionen">
+        <button className="secondary-button" type="button" onClick={() => navigate("today")}>Heute korrigieren</button>
+        <button className="secondary-button" type="button" onClick={() => navigate("today")}>Pause eintragen</button>
+        <button className="secondary-button" type="button" onClick={() => navigate("leave")}>Urlaub eintragen</button>
+        <button className="secondary-button" type="button" onClick={() => navigate("today")}>Notiz für heute</button>
+        <button className="secondary-button" type="button" onClick={() => navigate("today")}>Letzte Session bearbeiten</button>
         <button
-          className="secondary-button"
-          onClick={() => void saveDayOverride({
-            date: data.today.date,
-            manual_break_minutes: null,
-            target_minutes: 0,
-            day_type: "free",
-            note: data.today.note,
-          }).then(refresh)}
+          className="secondary-button danger-soft"
+          type="button"
+          onClick={() => void markTodayFree()}
         >
-          Heute als frei markieren
+          Heute arbeitsfrei setzen (Soll 0)
         </button>
       </section>
     </div>

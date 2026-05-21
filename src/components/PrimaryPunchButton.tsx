@@ -26,8 +26,8 @@ export function PrimaryPunchButton({ activeEntry, onDone, onError }: Props) {
   }
 
   return (
-    <button className={`punch-button ${activeEntry ? "running" : ""}`} onClick={() => void toggle()}>
-      {activeEntry ? <LogOut size={26} /> : <LogIn size={26} />}
+    <button className={`punch-button ${activeEntry ? "running" : ""}`} type="button" onClick={() => void toggle()}>
+      {activeEntry ? <LogOut size={26} aria-hidden="true" /> : <LogIn size={26} aria-hidden="true" />}
       <span>{activeEntry ? "Ausstempeln" : "Einstempeln"}</span>
     </button>
   );

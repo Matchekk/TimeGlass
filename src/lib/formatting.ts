@@ -6,6 +6,18 @@ export function formatMinutes(totalMinutes: number, withSign = false): string {
   return `${sign}${hours}:${String(minutes).padStart(2, "0")}`;
 }
 
+export function formatMinutesSpoken(totalMinutes: number, withSign = false): string {
+  const rounded = Math.round(totalMinutes);
+  const sign = rounded < 0 ? "minus " : withSign && rounded > 0 ? "plus " : "";
+  const abs = Math.abs(rounded);
+  const hours = Math.floor(abs / 60);
+  const minutes = abs % 60;
+  const parts: string[] = [];
+  if (hours > 0) parts.push(`${hours} ${hours === 1 ? "Stunde" : "Stunden"}`);
+  if (minutes > 0 || parts.length === 0) parts.push(`${minutes} ${minutes === 1 ? "Minute" : "Minuten"}`);
+  return `${sign}${parts.join(" ")}`;
+}
+
 export function formatClock(iso: string | null): string {
   if (!iso) return "-";
   return new Intl.DateTimeFormat("de-DE", {
@@ -19,6 +31,15 @@ export function formatDate(dateKey: string): string {
     weekday: "short",
     day: "2-digit",
     month: "2-digit",
+  }).format(new Date(`${dateKey}T00:00:00`));
+}
+
+export function formatDateSpoken(dateKey: string): string {
+  return new Intl.DateTimeFormat("de-DE", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
   }).format(new Date(`${dateKey}T00:00:00`));
 }
 

@@ -33,7 +33,7 @@ export function leaveTypeLabel(type: LeaveType): string {
     vacation: "Urlaub",
     sick: "Krank",
     public_holiday: "Feiertag",
-    time_off: "Frei",
+    time_off: "Arbeitsfrei",
     other: "Abwesenheit",
   };
   return labels[type];

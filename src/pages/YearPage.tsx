@@ -1,6 +1,6 @@
 import { StatCard } from "../components/StatCard";
 import { getMonthDates, hasMonthStarted } from "../lib/dateUtils";
-import { formatMinutes } from "../lib/formatting";
+import { formatMinutes, formatMinutesSpoken } from "../lib/formatting";
 import { summarizePeriod } from "../lib/timeCalculations";
 import type { AppData } from "../App";
 
@@ -26,12 +26,22 @@ export function YearPage({ data, onMonthSelect }: { data: AppData; refresh: () =
           const date = new Date(now.getFullYear(), month, 1);
           const keys = getMonthDates(date);
           const summaries = data.year.filter((day) => keys.includes(day.date));
-          const summary = hasMonthStarted(date, now) ? summarizePeriod(summaries) : { netMinutes: 0, targetMinutes: 0, differenceMinutes: 0 };
+          const started = hasMonthStarted(date, now);
+          const summary = started ? summarizePeriod(summaries) : { netMinutes: 0, targetMinutes: 0, differenceMinutes: 0 };
+          const monthLabel = date.toLocaleDateString("de-DE", { month: "long", year: "numeric" });
+          const status = started ? `Monatsdifferenz ${formatMinutesSpoken(summary.differenceMinutes, true)}` : "Monat noch nicht gestartet";
           return (
-            <button className="glass-card month-card month-card-button" key={month} onClick={() => onMonthSelect(date)}>
+            <button
+              className="glass-card month-card month-card-button"
+              type="button"
+              key={month}
+              aria-label={`${monthLabel} öffnen, ${status}`}
+              onClick={() => onMonthSelect(date)}
+            >
               <span>{date.toLocaleDateString("de-DE", { month: "long" })}</span>
               <strong className={summary.differenceMinutes >= 0 ? "positive-text" : "negative-text"}>{formatMinutes(summary.differenceMinutes, true)}</strong>
-              <small>{formatMinutes(summary.netMinutes)} netto</small>
+              <small>{started ? `${formatMinutes(summary.netMinutes)} netto` : "Noch nicht gestartet"}</small>
+              {started && <small className="state-badge">{summary.differenceMinutes >= 0 ? "Plus" : "Minus"}</small>}
             </button>
           );
         })}

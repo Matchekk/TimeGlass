@@ -14,7 +14,7 @@ interface Props {
 
 const dayTypes: Array<{ value: DayType; label: string }> = [
   { value: "work", label: "Arbeitstag" },
-  { value: "free", label: "Frei" },
+  { value: "free", label: "Arbeitsfrei (Soll 0)" },
   { value: "sick", label: "Krank" },
   { value: "vacation", label: "Urlaub" },
   { value: "other", label: "Sonstiges" },
@@ -130,7 +130,7 @@ export function DayDetail({ day, entries, override, onChanged }: Props) {
             </div>
           </div>
         )}
-        <button className="secondary-button wide" type="submit"><Save size={16} /> Speichern</button>
+        <button className="secondary-button wide" type="submit"><Save size={16} aria-hidden="true" /> Speichern</button>
       </form>
 
       <div className="session-list">
@@ -153,7 +153,7 @@ export function DayDetail({ day, entries, override, onChanged }: Props) {
           Notiz
           <input value={newNote} onChange={(event) => setNewNote(event.target.value)} />
         </label>
-        <button className="secondary-button" type="submit"><Plus size={16} /> Session hinzufügen</button>
+        <button className="secondary-button" type="submit"><Plus size={16} aria-hidden="true" /> Session hinzufügen</button>
       </form>
     </section>
   );
@@ -176,6 +176,8 @@ function SessionRow({ entry, onChanged, onError }: { entry: TimeEntry; onChanged
   }
 
   async function remove() {
+    const confirmed = window.confirm("Session wirklich löschen?\nDiese Arbeitszeit wird aus dem Tag entfernt.");
+    if (!confirmed) return;
     try {
       await deleteEntry(entry.id);
       await onChanged();
@@ -187,21 +189,22 @@ function SessionRow({ entry, onChanged, onError }: { entry: TimeEntry; onChanged
   if (!editing) {
     return (
       <div className="session-row">
-        <button className="session-main" onClick={() => setEditing(true)}>
+        <button className="session-main" type="button" onClick={() => setEditing(true)}>
           <strong>{formatClock(entry.start_time)} - {formatClock(entry.end_time)}</strong>
           <span>{entry.note || (entry.end_time ? "Abgeschlossen" : "Läuft")}</span>
         </button>
-        <button className="icon-button" title="Session löschen" onClick={() => void remove()}><Trash2 size={16} /></button>
+        <button className="icon-button danger-button" type="button" title="Session löschen" aria-label="Session löschen" onClick={() => void remove()}><Trash2 size={16} aria-hidden="true" /></button>
       </div>
     );
   }
 
   return (
     <div className="session-edit">
-      <input type="datetime-local" value={start} onChange={(event) => setStart(event.target.value)} />
-      <input type="datetime-local" value={end} onChange={(event) => setEnd(event.target.value)} />
-      <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Notiz" />
-      <button className="secondary-button" onClick={() => void persist()}><Save size={16} /> OK</button>
+      <input type="datetime-local" aria-label="Startzeit der Session" value={start} onChange={(event) => setStart(event.target.value)} />
+      <input type="datetime-local" aria-label="Endzeit der Session" value={end} onChange={(event) => setEnd(event.target.value)} />
+      <input value={note} aria-label="Notiz zur Session" onChange={(event) => setNote(event.target.value)} placeholder="Notiz" />
+      <button className="secondary-button" type="button" onClick={() => void persist()}><Save size={16} aria-hidden="true" /> Speichern</button>
+      <button className="secondary-button" type="button" onClick={() => setEditing(false)}>Abbrechen</button>
     </div>
   );
 }
