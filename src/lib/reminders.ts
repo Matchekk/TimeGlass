@@ -14,6 +14,15 @@ export interface ReminderDecision {
   body: string;
 }
 
+export function resetReminderStateForNewSession(date: string): void {
+  const state = JSON.parse(localStorage.getItem("timeglass.reminderState") ?? "{}") as ReminderState;
+  const nextState = { ...state };
+  for (const key of Object.keys(nextState) as Array<keyof ReminderState>) {
+    if (nextState[key] === date) delete nextState[key];
+  }
+  localStorage.setItem("timeglass.reminderState", JSON.stringify(nextState));
+}
+
 function isAfterClock(time: string, now: Date): boolean {
   const [hours, minutes] = time.split(":").map(Number);
   if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return false;
@@ -59,6 +68,7 @@ export function getReminderDecisions(
 
   if (
     settings.notifyUnusualSession &&
+    !decisions.some((decision) => decision.key === "longSessionDate") &&
     state.longSessionDate !== date &&
     isLongActiveSession(activeEntry, settings.unusualSessionMinutes, now)
   ) {

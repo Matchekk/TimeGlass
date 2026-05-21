@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DayOverride, TimeEntry } from "../types";
-import { calculateFlexBalance, defaultSettings, isLongActiveSession, roundMinutes, summarizeDay } from "./timeCalculations";
+import { calculateFlexBalance, calculateLeaveTimeEstimate, defaultSettings, isLongActiveSession, roundMinutes, summarizeDay } from "./timeCalculations";
 
 function entry(start: string, end: string | null): TimeEntry {
   return {
@@ -61,6 +61,19 @@ describe("time calculations", () => {
     expect(summary.differenceMinutes).toBe(0);
   });
 
+  it("keeps free days at target 0 even when workdays include the date", () => {
+    const override: DayOverride = {
+      date,
+      manual_break_minutes: null,
+      target_minutes: null,
+      day_type: "free",
+      note: null,
+      created_at: now.toISOString(),
+      updated_at: now.toISOString(),
+    };
+    expect(summarizeDay(date, [entry("2026-05-20T08:00:00.000Z", "2026-05-20T09:00:00.000Z")], override, defaultSettings, now).targetMinutes).toBe(0);
+  });
+
   it("uses target 0 before tracking start date", () => {
     const summary = summarizeDay("2026-05-17", [], undefined, { ...defaultSettings, trackingStartDate: "2026-05-18" }, now);
     expect(summary.targetMinutes).toBe(0);
@@ -101,5 +114,19 @@ describe("time calculations", () => {
 
   it("detects long active sessions", () => {
     expect(isLongActiveSession(entry("2026-05-20T01:00:00.000Z", null), 600, now)).toBe(true);
+  });
+
+  it("calculates leave time for zero balance and desired plus", () => {
+    const active = entry("2026-05-20T08:00:00.000Z", null);
+    const summary = summarizeDay(date, [active], undefined, defaultSettings, now);
+    const estimate = calculateLeaveTimeEstimate(summary, active, 30, now);
+    expect(estimate.targetReached).toBe(false);
+    expect(estimate.leaveAtZero?.toISOString()).toBe("2026-05-20T16:00:00.000Z");
+    expect(estimate.leaveAtDesiredPlus?.toISOString()).toBe("2026-05-20T16:30:00.000Z");
+  });
+
+  it("marks daily target as reached", () => {
+    const summary = summarizeDay(date, [entry("2026-05-20T08:00:00.000Z", "2026-05-20T16:00:00.000Z")], undefined, defaultSettings, now);
+    expect(calculateLeaveTimeEstimate(summary, null, 30, now).targetReached).toBe(true);
   });
 });

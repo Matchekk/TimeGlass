@@ -6,6 +6,11 @@ describe("performance mode", () => {
     expect(getRefreshIntervalMs(true, false, true)).toBe(60_000);
   });
 
+  it("uses second ticks only for visible active sessions", () => {
+    expect(getRefreshIntervalMs(true, true, true)).toBe(1_000);
+    expect(getRefreshIntervalMs(true, true, false)).toBe(60_000);
+  });
+
   it("does not keep multiple central timers", () => {
     vi.useFakeTimers();
     const timer = new CentralTimer();

@@ -121,6 +121,34 @@ export function calculateFlexBalance(summaries: DaySummary[], startBalanceMinute
   return startBalanceMinutes + summaries.reduce((sum, day) => sum + day.differenceMinutes, 0);
 }
 
+export interface LeaveTimeEstimate {
+  targetReached: boolean;
+  leaveAtZero: Date | null;
+  leaveAtDesiredPlus: Date | null;
+  minutesUntilZero: number;
+  minutesUntilDesiredPlus: number;
+}
+
+export function calculateLeaveTimeEstimate(
+  today: DaySummary,
+  activeEntry: TimeEntry | null,
+  desiredPlusMinutes: number,
+  now = new Date(),
+): LeaveTimeEstimate {
+  const remainingToZero = Math.max(0, today.targetMinutes - today.netMinutes);
+  const desiredNetMinutes = today.targetMinutes + Math.max(0, desiredPlusMinutes);
+  const remainingToDesiredPlus = Math.max(0, desiredNetMinutes - today.netMinutes);
+  const active = Boolean(activeEntry && !activeEntry.end_time);
+
+  return {
+    targetReached: today.targetMinutes === 0 || today.netMinutes >= today.targetMinutes,
+    leaveAtZero: active ? new Date(now.getTime() + remainingToZero * 60_000) : null,
+    leaveAtDesiredPlus: active ? new Date(now.getTime() + remainingToDesiredPlus * 60_000) : null,
+    minutesUntilZero: remainingToZero,
+    minutesUntilDesiredPlus: remainingToDesiredPlus,
+  };
+}
+
 export function isEntryValid(startIso: string, endIso: string | null): boolean {
   if (!Number.isFinite(new Date(startIso).getTime())) return false;
   if (!endIso) return true;

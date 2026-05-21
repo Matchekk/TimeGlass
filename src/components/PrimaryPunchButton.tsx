@@ -1,5 +1,7 @@
 import { LogIn, LogOut } from "lucide-react";
 import { startEntry, stopActiveEntry } from "../db/timeEntries";
+import { toDateKey } from "../lib/dateUtils";
+import { resetReminderStateForNewSession } from "../lib/reminders";
 import type { TimeEntry } from "../types";
 
 interface Props {
@@ -15,6 +17,7 @@ export function PrimaryPunchButton({ activeEntry, onDone, onError }: Props) {
         await stopActiveEntry();
       } else {
         await startEntry();
+        resetReminderStateForNewSession(toDateKey());
       }
       await onDone();
     } catch (err) {

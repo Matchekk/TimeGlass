@@ -50,6 +50,13 @@ export function SettingsPage({ data, refresh }: { data: AppData; refresh: () => 
     setSettings((current) => ({ ...current, ...next }));
   }
 
+  const remindersEnabled =
+    settings.reminderLongSessionEnabled ||
+    settings.reminderClockOutEnabled ||
+    settings.reminderNoTimeTodayEnabled ||
+    settings.reminderTargetReachedEnabled ||
+    settings.notifyUnusualSession;
+
   async function persistSettings(successMessage = "Einstellungen gespeichert.") {
     if (
       settings.reminderLongSessionEnabled ||
@@ -203,6 +210,9 @@ export function SettingsPage({ data, refresh }: { data: AppData; refresh: () => 
 
       <section className="glass-panel settings-form">
         <h2 className="wide">Reminder</h2>
+        {remindersEnabled && diagnostics.notificationPermission !== "ja" && (
+          <div className="inline-warning wide">Notifications sind noch nicht erlaubt. TimeGlass fragt erst beim Speichern der Reminder nach.</div>
+        )}
         <label className="switch-row wide">
           <input type="checkbox" checked={settings.reminderLongSessionEnabled} onChange={(event) => patch({ reminderLongSessionEnabled: event.target.checked })} />
           Erinnerung, wenn noch eingestempelt nach X Stunden

@@ -20,6 +20,6 @@ export class CentralTimer {
 
 export function getRefreshIntervalMs(lowRamMode: boolean, visible: boolean, hasActiveSession: boolean): number {
   if (!hasActiveSession) return lowRamMode ? 60_000 : 30_000;
-  if (!lowRamMode) return 30_000;
-  return visible ? 30_000 : 60_000;
+  if (visible) return lowRamMode ? 1_000 : 1_000;
+  return lowRamMode ? 60_000 : 30_000;
 }

@@ -553,6 +553,40 @@ select:focus {
   padding: 18px;
 }
 
+.leave-calculator,
+.quality-panel {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.leave-calculator-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.leave-calculator input {
+  margin: 10px 0;
+}
+
+.quality-line {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 12px;
+  align-items: center;
+  color: #eef4ff;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(246, 190, 116, 0.18);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.quality-line span {
+  color: rgba(238, 244, 255, 0.7);
+}
+
 .leave-line,
 .diagnostics-line {
   display: grid;
@@ -606,6 +640,7 @@ select:focus {
 
   .card-grid,
   .card-grid.three,
+  .leave-calculator-grid,
   .week-calendar,
   .month-card-grid,
   .form-grid,
@@ -615,6 +650,10 @@ select:focus {
 
   .day-line {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .quality-line {
+    grid-template-columns: 1fr;
   }
 
   .session-edit,

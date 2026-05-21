@@ -19,7 +19,7 @@ import { getMonthDates, getWeekDates, getYearDates, toDateKey } from "./lib/date
 import { calculateFlexBalance, summarizeDay, summarizePeriod } from "./lib/timeCalculations";
 import { formatMinutes } from "./lib/formatting";
 import { getRefreshIntervalMs } from "./lib/performanceMode";
-import { getReminderDecisions, type ReminderState } from "./lib/reminders";
+import { getReminderDecisions, resetReminderStateForNewSession, type ReminderState } from "./lib/reminders";
 import { eachDateInRange, findLeaveForDate, leaveTypeLabel } from "./lib/leaveCalculations";
 import type { DayType } from "./types";
 
@@ -57,6 +57,31 @@ function leaveTypeToDayType(type: string): DayType {
   if (type === "sick") return "sick";
   if (type === "public_holiday" || type === "time_off") return "free";
   return "other";
+}
+
+function applyLeaveToSummary(summary: DaySummary, leave: LeaveEntry | undefined, settings: Settings, hasOverride: boolean): DaySummary {
+  if (!leave || hasOverride) return summary;
+  if (settings.defaultPaidAbsenceBehavior === "counts_as_target" && summary.netMinutes === 0 && summary.targetMinutes > 0) {
+    return {
+      ...summary,
+      netMinutes: summary.targetMinutes,
+      differenceMinutes: 0,
+      dayType: leaveTypeToDayType(leave.type),
+      note: leave.note ?? leaveTypeLabel(leave.type),
+    };
+  }
+  return {
+    ...summary,
+    targetMinutes: 0,
+    differenceMinutes: summary.netMinutes,
+    dayType: leaveTypeToDayType(leave.type),
+    note: leave.note ?? leaveTypeLabel(leave.type),
+  };
+}
+
+function activeSessionMinutes(activeEntry: TimeEntry | null, now: Date): number {
+  if (!activeEntry || activeEntry.end_time) return 0;
+  return Math.max(0, Math.round((now.getTime() - new Date(activeEntry.start_time).getTime()) / 60_000));
 }
 
 export function App() {
@@ -102,23 +127,7 @@ export function App() {
       const make = (key: string) => {
         const summary = summarizeDay(key, entries, map.get(key), settings, now);
         const leave = findLeaveForDate(leaveEntries, key);
-        if (!leave || map.has(key)) return summary;
-        if (settings.defaultPaidAbsenceBehavior === "counts_as_target" && summary.netMinutes === 0 && summary.targetMinutes > 0) {
-          return {
-            ...summary,
-            netMinutes: summary.targetMinutes,
-            differenceMinutes: 0,
-            dayType: leaveTypeToDayType(leave.type),
-            note: leave.note ?? leaveTypeLabel(leave.type),
-          };
-        }
-        return {
-          ...summary,
-          targetMinutes: 0,
-          differenceMinutes: summary.netMinutes,
-          dayType: leaveTypeToDayType(leave.type),
-          note: leave.note ?? leaveTypeLabel(leave.type),
-        };
+        return applyLeaveToSummary(summary, leave, settings, map.has(key));
       };
       const year = yearKeys.map(make);
       const allRecordedKeys = Array.from(
@@ -131,11 +140,7 @@ export function App() {
       const allDays = allRecordedKeys.map((key) => {
         const summary = summarizeDay(key, allEntries, allMap.get(key), settings, now);
         const leave = findLeaveForDate(leaveEntries, key);
-        if (!leave || allMap.has(key)) return summary;
-        if (settings.defaultPaidAbsenceBehavior === "counts_as_target" && summary.netMinutes === 0 && summary.targetMinutes > 0) {
-          return { ...summary, netMinutes: summary.targetMinutes, differenceMinutes: 0, dayType: leaveTypeToDayType(leave.type) };
-        }
-        return { ...summary, targetMinutes: 0, differenceMinutes: summary.netMinutes, dayType: leaveTypeToDayType(leave.type) };
+        return applyLeaveToSummary(summary, leave, settings, allMap.has(key));
       });
       setData({
         settings,
@@ -157,43 +162,51 @@ export function App() {
 
   useEffect(() => {
     void refresh();
-  }, [refresh, tick]);
+  }, [refresh, page]);
+
+  const liveData = useMemo(() => {
+    if (!data) return null;
+    const todayOverride = data.overrides.find((override) => override.date === data.today.date);
+    const summary = summarizeDay(data.today.date, data.entries, todayOverride, data.settings, tick);
+    const today = applyLeaveToSummary(summary, findLeaveForDate(data.leaveEntries, data.today.date), data.settings, Boolean(todayOverride));
+    return { ...data, today };
+  }, [data, tick]);
 
   useEffect(() => {
-    if (!data) return;
-    void invoke("set_close_to_tray", { enabled: data.settings.closeToTray });
-    const activeEntry = data.entries.find((entry) => !entry.end_time) ?? null;
+    if (!liveData) return;
+    void invoke("set_close_to_tray", { enabled: liveData.settings.closeToTray });
+    const activeEntry = liveData.entries.find((entry) => !entry.end_time) ?? null;
     void invoke("update_tray_status", {
       status: activeEntry ? "Status: Eingestempelt" : "Status: Ausgestempelt",
-      session: activeEntry ? `Aktuelle Session: ${formatMinutes(data.today.grossMinutes)}` : "Aktuelle Session: -",
+      session: activeEntry ? `Aktuelle Session: ${formatMinutes(activeSessionMinutes(activeEntry, tick))}` : "Aktuelle Session: -",
       toggleLabel: activeEntry ? "Ausstempeln" : "Einstempeln",
     }).catch(() => undefined);
-  }, [data]);
+  }, [liveData, tick]);
 
   useEffect(() => {
-    if (!data) return;
-    const activeEntry = data.entries.find((entry) => !entry.end_time) ?? null;
+    if (!liveData) return;
+    const activeEntry = liveData.entries.find((entry) => !entry.end_time) ?? null;
     const state = JSON.parse(localStorage.getItem("timeglass.reminderState") ?? "{}") as ReminderState;
-    const decisions = getReminderDecisions(data.settings, data.today, activeEntry, state, tick);
+    const decisions = getReminderDecisions(liveData.settings, liveData.today, activeEntry, state, tick);
     if (decisions.length === 0) return;
     void isPermissionGranted().then((granted) => {
       if (!granted) return;
       const nextState = { ...state };
       for (const decision of decisions) {
         sendNotification({ title: decision.title, body: decision.body });
-        nextState[decision.key] = data.today.date;
+        nextState[decision.key] = liveData.today.date;
       }
       localStorage.setItem("timeglass.reminderState", JSON.stringify(nextState));
     });
-  }, [data, tick]);
+  }, [liveData, tick]);
 
   useEffect(() => {
-    if (!data || minimizedOnce.current || !data.settings.startMinimized) return;
+    if (!liveData || minimizedOnce.current || !liveData.settings.startMinimized) return;
     minimizedOnce.current = true;
     void invoke<boolean>("is_autostart_launch").then((autostart) => {
       if (autostart) void getCurrentWindow().minimize();
     });
-  }, [data]);
+  }, [liveData]);
 
   useEffect(() => {
     const unlisteners: Array<() => void> = [];
@@ -201,7 +214,10 @@ export function App() {
       try {
         const active = data?.entries.find((entry) => !entry.end_time);
         if (active) await stopActiveEntry();
-        else await startEntry();
+        else {
+          await startEntry();
+          resetReminderStateForNewSession(toDateKey());
+        }
         await refresh();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Tray-Aktion fehlgeschlagen.");
@@ -212,8 +228,8 @@ export function App() {
   }, [data?.entries, refresh]);
 
   const content = useMemo(() => {
-    if (!data) return <div className="glass-panel state-panel">TimeGlass wird geladen...</div>;
-    const common = { data, refresh };
+    if (!liveData) return <div className="glass-panel state-panel">TimeGlass wird geladen...</div>;
+    const common = { data: liveData, refresh };
     if (page === "today") return <TodayPage {...common} />;
     if (page === "week") return <WeekPage {...common} />;
     if (page === "month") return <MonthPage {...common} monthDate={selectedMonth} />;
@@ -231,10 +247,10 @@ export function App() {
     if (page === "leave") return <LeavePage {...common} />;
     if (page === "settings") return <SettingsPage {...common} />;
     return <DashboardPage {...common} navigate={setPage} />;
-  }, [data, page, refresh, selectedMonth]);
+  }, [liveData, page, refresh, selectedMonth]);
 
   const weekTotal = data ? summarizePeriod(data.week) : null;
-  const todayRemaining = data ? Math.max(0, data.today.targetMinutes - data.today.netMinutes) : null;
+  const todayRemaining = liveData ? Math.max(0, liveData.today.targetMinutes - liveData.today.netMinutes) : null;
 
   return (
     <div className="app-shell">
