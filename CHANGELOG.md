@@ -23,6 +23,7 @@ Alle nennenswerten Änderungen an TimeGlass werden hier dokumentiert.
   - Gewünschtes Konto-Plus mit Feierabendzeit
   - Hinweis, falls Gleitzeit den heutigen Soll-Rest abdeckt
 - TodayPage zeigt zusätzliche Karten: Rest bis Tages-Soll, Rest bis Konto 0, Gleitzeit inkl. heute
+- „Gewünschtes Konto-Plus" wird persistent in den Settings gespeichert (Key `desired_balance_minutes`) — speichert bei Verlassen des Feldes (Blur oder Enter), überlebt App-Neustart und wird beim JSON-Export mit übernommen
 - Versionsbump auf 0.3.0 für package.json, src-tauri/tauri.conf.json und src-tauri/Cargo.toml
 
 ### Geändert
