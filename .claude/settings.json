@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "{ grep -qE '\"file_path\"[[:space:]]*:[[:space:]]*\"[^\"]+\\.tsx?\"' && npm test --silent 2>&1 | tail -20; } || true",
+            "statusMessage": "Running vitest"
+          }
+        ]
+      }
+    ]
+  }
+}

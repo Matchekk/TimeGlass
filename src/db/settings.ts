@@ -1,5 +1,5 @@
 import { defaultSettings } from "../lib/timeCalculations";
-import type { Settings } from "../types";
+import type { Settings, WorkModelMode } from "../types";
 import { getDb } from "./schema";
 
 const keys = {
@@ -28,7 +28,39 @@ const keys = {
   vacationYear: "vacation_year",
   defaultPaidAbsenceBehavior: "default_paid_absence_behavior",
   lastExportAt: "last_export_at",
+  workModelMode: "work_model_mode",
+  weeklyTargetMinutes: "weekly_target_minutes",
+  weekdayTargets: "weekday_targets",
+  showOvertimeBalance: "show_overtime_balance",
+  showDailyDelta: "show_daily_delta",
+  desiredBalanceMinutes: "desired_balance_minutes",
 } as const;
+
+const VALID_WORK_MODES: ReadonlySet<WorkModelMode> = new Set([
+  "fixed_daily",
+  "fixed_weekly_distributed",
+  "custom_weekday_targets",
+  "variable_weekly_target",
+  "no_target_tracking",
+]);
+
+function parseWorkModelMode(value: string | undefined): WorkModelMode {
+  if (value && VALID_WORK_MODES.has(value as WorkModelMode)) return value as WorkModelMode;
+  return defaultSettings.workModelMode;
+}
+
+function parseWeekdayTargets(value: string | undefined): number[] {
+  if (!value) return [...defaultSettings.weekdayTargets];
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed) && parsed.length === 7 && parsed.every((entry) => Number.isFinite(Number(entry)))) {
+      return parsed.map((entry) => Math.max(0, Math.round(Number(entry))));
+    }
+  } catch {
+    /* fall through */
+  }
+  return [...defaultSettings.weekdayTargets];
+}
 
 function boolValue(value: string | undefined, fallback: boolean): boolean {
   return value == null ? fallback : value === "true";
@@ -69,6 +101,12 @@ export async function getSettings(): Promise<Settings> {
     vacationYear: numberValue(values.get(keys.vacationYear), defaultSettings.vacationYear),
     defaultPaidAbsenceBehavior: (values.get(keys.defaultPaidAbsenceBehavior) ?? defaultSettings.defaultPaidAbsenceBehavior) as typeof defaultSettings.defaultPaidAbsenceBehavior,
     lastExportAt: values.get(keys.lastExportAt) ?? defaultSettings.lastExportAt,
+    workModelMode: parseWorkModelMode(values.get(keys.workModelMode)),
+    weeklyTargetMinutes: numberValue(values.get(keys.weeklyTargetMinutes), defaultSettings.weeklyTargetMinutes),
+    weekdayTargets: parseWeekdayTargets(values.get(keys.weekdayTargets)),
+    showOvertimeBalance: boolValue(values.get(keys.showOvertimeBalance), defaultSettings.showOvertimeBalance),
+    showDailyDelta: boolValue(values.get(keys.showDailyDelta), defaultSettings.showDailyDelta),
+    desiredBalanceMinutes: numberValue(values.get(keys.desiredBalanceMinutes), defaultSettings.desiredBalanceMinutes),
   };
 }
 
@@ -100,6 +138,12 @@ export async function saveSettings(settings: Settings): Promise<void> {
     [keys.vacationYear, String(settings.vacationYear)],
     [keys.defaultPaidAbsenceBehavior, settings.defaultPaidAbsenceBehavior],
     [keys.lastExportAt, settings.lastExportAt ?? ""],
+    [keys.workModelMode, settings.workModelMode],
+    [keys.weeklyTargetMinutes, String(settings.weeklyTargetMinutes)],
+    [keys.weekdayTargets, JSON.stringify(settings.weekdayTargets)],
+    [keys.showOvertimeBalance, String(settings.showOvertimeBalance)],
+    [keys.showDailyDelta, String(settings.showDailyDelta)],
+    [keys.desiredBalanceMinutes, String(settings.desiredBalanceMinutes)],
   ];
 
   for (const [key, value] of pairs) {

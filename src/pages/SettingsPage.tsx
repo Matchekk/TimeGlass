@@ -2,14 +2,15 @@ import { Download, FileJson, Save, Upload } from "lucide-react";
 import { getVersion } from "@tauri-apps/api/app";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
-import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { saveSettings } from "../db/settings";
 import { databaseDisplayPath } from "../db/schema";
 import { countTimeEntries, exportData, importData } from "../db/timeEntries";
 import { countLeaveEntries } from "../db/leaveEntries";
 import { formatMinutes, parseDurationToMinutes } from "../lib/formatting";
+import { getTargetMinutesForDate, shouldShowDailyDelta, shouldShowOvertimeBalance, todayKey } from "../lib/timeCalculations";
 import type { AppData } from "../App";
-import type { ImportExportPayload, Settings } from "../types";
+import type { ImportExportPayload, Settings, WorkModelMode } from "../types";
 
 const weekdays = [
   { value: 1, label: "Mo" },
@@ -19,6 +20,24 @@ const weekdays = [
   { value: 5, label: "Fr" },
   { value: 6, label: "Sa" },
   { value: 0, label: "So" },
+];
+
+const workModelOptions: Array<{ value: WorkModelMode; label: string; helper: string }> = [
+  { value: "fixed_daily", label: "Vollzeit / feste Sollzeit", helper: "Feste Sollzeit pro Arbeitstag, z. B. Mo–Fr je 8 Stunden." },
+  { value: "fixed_weekly_distributed", label: "Teilzeit mit festen Tagen", helper: "Feste Wochenstunden, verteilt auf gewählte Arbeitstage." },
+  { value: "custom_weekday_targets", label: "Teilzeit mit individuellen Tageszielen", helper: "Pro Wochentag eigene Sollzeit, freie Tage sind 0:00." },
+  { value: "variable_weekly_target", label: "Flexible Wochenstunden", helper: "Feste Wochenstunden, Tagesverteilung ist frei. Keine Tagesdifferenz." },
+  { value: "no_target_tracking", label: "Nur Ist-Zeit", helper: "Reine Erfassung gearbeiteter Zeit. Keine Über- oder Unterstundenberechnung." },
+];
+
+const weekdayOrder: Array<{ index: number; label: string }> = [
+  { index: 1, label: "Montag" },
+  { index: 2, label: "Dienstag" },
+  { index: 3, label: "Mittwoch" },
+  { index: 4, label: "Donnerstag" },
+  { index: 5, label: "Freitag" },
+  { index: 6, label: "Samstag" },
+  { index: 0, label: "Sonntag" },
 ];
 
 export function SettingsPage({ data, refresh }: { data: AppData; refresh: () => Promise<void> }) {
@@ -138,6 +157,20 @@ export function SettingsPage({ data, refresh }: { data: AppData; refresh: () => 
     }
   }
 
+  const previewTodaysTarget = useMemo(
+    () => getTargetMinutesForDate(todayKey(), undefined, settings),
+    [settings],
+  );
+  const showDailyDeltaInPreview = shouldShowDailyDelta(settings);
+  const showOvertimeBalanceInPreview = shouldShowOvertimeBalance(settings);
+
+  function updateWeekdayTarget(index: number, value: string) {
+    const minutes = parseDurationToMinutes(value);
+    const next = [...settings.weekdayTargets];
+    next[index] = minutes != null && minutes > 0 ? minutes : 0;
+    patch({ weekdayTargets: next });
+  }
+
   return (
     <div className="page-stack">
       <div className="section-heading">
@@ -147,34 +180,199 @@ export function SettingsPage({ data, refresh }: { data: AppData; refresh: () => 
         </div>
       </div>
       {message && <div className="success-banner">{message}</div>}
-      <form className="glass-panel settings-form" onSubmit={(event) => void submit(event)}>
-        <label>
-          Standard-Sollzeit
-          <input value={formatMinutes(settings.standardTargetMinutes)} onChange={(event) => patch({ standardTargetMinutes: parseDurationToMinutes(event.target.value) ?? settings.standardTargetMinutes })} />
+
+      <section className="glass-panel settings-form">
+        <h2 className="wide">Arbeitsmodell</h2>
+        <p className="muted wide">Bestimmt, wie TimeGlass Sollzeit, Differenzen und Gleitzeit anzeigt. Persönliche Übersicht, keine offizielle Lohnabrechnung.</p>
+        <label className="wide">
+          Arbeitsmodell auswählen
+          <select
+            value={settings.workModelMode}
+            onChange={(event) => patch({ workModelMode: event.target.value as WorkModelMode })}
+          >
+            {workModelOptions.map((option) => (
+              <option value={option.value} key={option.value}>{option.label}</option>
+            ))}
+          </select>
         </label>
+        <p className="muted wide" id="work-model-helper">
+          {workModelOptions.find((option) => option.value === settings.workModelMode)?.helper}
+        </p>
+
+        {settings.workModelMode === "fixed_daily" && (
+          <>
+            <div className="wide">
+              <span className="field-title">Arbeitstage</span>
+              <div className="segmented" role="group" aria-label="Arbeitstage auswählen">
+                {weekdays.map((day) => (
+                  <button
+                    type="button"
+                    className={settings.workdays.includes(day.value) ? "active" : ""}
+                    key={day.value}
+                    aria-pressed={settings.workdays.includes(day.value)}
+                    onClick={() => patch({ workdays: settings.workdays.includes(day.value) ? settings.workdays.filter((value) => value !== day.value) : [...settings.workdays, day.value].sort() })}
+                  >
+                    {day.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <label>
+              Sollzeit pro Arbeitstag
+              <input
+                value={formatMinutes(settings.standardTargetMinutes)}
+                onChange={(event) => patch({ standardTargetMinutes: parseDurationToMinutes(event.target.value) ?? settings.standardTargetMinutes })}
+                aria-describedby="fixed-daily-help"
+              />
+            </label>
+            <p className="muted wide" id="fixed-daily-help">Eingabe als HH:MM, z. B. 8:00.</p>
+          </>
+        )}
+
+        {settings.workModelMode === "fixed_weekly_distributed" && (
+          <>
+            <label>
+              Wochenstunden
+              <input
+                value={formatMinutes(settings.weeklyTargetMinutes)}
+                onChange={(event) => patch({ weeklyTargetMinutes: parseDurationToMinutes(event.target.value) ?? settings.weeklyTargetMinutes })}
+                aria-describedby="weekly-help"
+              />
+            </label>
+            <p className="muted wide" id="weekly-help">Eingabe als HH:MM, z. B. 24:00 für 24 Wochenstunden.</p>
+            <div className="wide">
+              <span className="field-title">Arbeitstage auswählen</span>
+              <div className="segmented" role="group" aria-label="Arbeitstage auswählen">
+                {weekdays.map((day) => (
+                  <button
+                    type="button"
+                    className={settings.workdays.includes(day.value) ? "active" : ""}
+                    key={day.value}
+                    aria-pressed={settings.workdays.includes(day.value)}
+                    onClick={() => patch({ workdays: settings.workdays.includes(day.value) ? settings.workdays.filter((value) => value !== day.value) : [...settings.workdays, day.value].sort() })}
+                  >
+                    {day.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="wide">
+              <span className="field-title">Berechnete Tages-Sollzeit</span>
+              <p>
+                {settings.workdays.length > 0
+                  ? `${formatMinutes(Math.round(settings.weeklyTargetMinutes / settings.workdays.length))} pro Arbeitstag`
+                  : "Bitte mindestens einen Arbeitstag auswählen."}
+              </p>
+            </div>
+          </>
+        )}
+
+        {settings.workModelMode === "custom_weekday_targets" && (
+          <div className="wide">
+            <span className="field-title">Sollzeit pro Wochentag (HH:MM)</span>
+            <p className="muted">Tage mit Sollzeit größer 0 zählen automatisch als Arbeitstag.</p>
+            <div className="weekday-target-grid">
+              {weekdayOrder.map((day) => (
+                <label key={day.index} className="weekday-target-row">
+                  <span>{day.label}</span>
+                  <input
+                    aria-label={`Sollzeit ${day.label}`}
+                    value={formatMinutes(settings.weekdayTargets[day.index] ?? 0)}
+                    onChange={(event) => updateWeekdayTarget(day.index, event.target.value)}
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {settings.workModelMode === "variable_weekly_target" && (
+          <>
+            <label>
+              Wochenstunden
+              <input
+                value={formatMinutes(settings.weeklyTargetMinutes)}
+                onChange={(event) => patch({ weeklyTargetMinutes: parseDurationToMinutes(event.target.value) ?? settings.weeklyTargetMinutes })}
+                aria-describedby="variable-help"
+              />
+            </label>
+            <p className="muted wide" id="variable-help">
+              In diesem Modus wird keine Tagesdifferenz berechnet. Tage ohne Arbeit erzeugen keine Unterstunden.
+            </p>
+          </>
+        )}
+
+        {settings.workModelMode === "no_target_tracking" && (
+          <p className="muted wide">
+            In diesem Modus erfasst TimeGlass nur gearbeitete Zeit. Überstunden, Unterstunden, Gleitzeit und Sollzeit werden nicht berechnet.
+          </p>
+        )}
+
+        <section className="glass-card preview-card wide" aria-label="Vorschau Arbeitsmodell">
+          <span className="eyebrow">Vorschau</span>
+          <ul className="preview-list">
+            <li>
+              <span>Tages-Soll heute</span>
+              <strong>{previewTodaysTarget == null ? "Kein Tages-Soll" : formatMinutes(previewTodaysTarget)}</strong>
+            </li>
+            <li>
+              <span>Wochen-Soll</span>
+              <strong>
+                {settings.workModelMode === "no_target_tracking"
+                  ? "nicht aktiv"
+                  : settings.workModelMode === "variable_weekly_target"
+                    ? formatMinutes(settings.weeklyTargetMinutes)
+                    : settings.workModelMode === "fixed_weekly_distributed"
+                      ? formatMinutes(settings.weeklyTargetMinutes)
+                      : settings.workModelMode === "custom_weekday_targets"
+                        ? formatMinutes(settings.weekdayTargets.reduce((sum, value) => sum + (Number.isFinite(value) ? value : 0), 0))
+                        : formatMinutes(settings.workdays.length * settings.standardTargetMinutes)}
+              </strong>
+            </li>
+            <li>
+              <span>Tagesdifferenz aktiv</span>
+              <strong>{showDailyDeltaInPreview ? "ja" : "nein"}</strong>
+            </li>
+            <li>
+              <span>Gleitzeitkonto aktiv</span>
+              <strong>{showOvertimeBalanceInPreview ? "ja" : "nein"}</strong>
+            </li>
+            <li>
+              <span>Freie Tage erzeugen Minusstunden</span>
+              <strong>
+                {settings.workModelMode === "fixed_daily" || settings.workModelMode === "custom_weekday_targets"
+                  ? "nein, an freien Tagen ist Soll 0"
+                  : settings.workModelMode === "fixed_weekly_distributed"
+                    ? "nein, nur an Arbeitstagen"
+                    : "nein"}
+              </strong>
+            </li>
+          </ul>
+        </section>
+
+        <button className="secondary-button wide" type="button" onClick={() => void persistSettings("Arbeitsmodell gespeichert.")}><Save size={16} aria-hidden="true" /> Arbeitsmodell speichern</button>
+      </section>
+
+      <form className="glass-panel settings-form" onSubmit={(event) => void submit(event)}>
+        <h2 className="wide">Tracking-Beginn und Pausen</h2>
         <label>
           Start-Gleitzeitkonto
-          <input value={formatMinutes(settings.startBalanceMinutes, true)} onChange={(event) => patch({ startBalanceMinutes: parseDurationToMinutes(event.target.value) ?? settings.startBalanceMinutes })} />
+          <input
+            value={formatMinutes(settings.startBalanceMinutes, true)}
+            disabled={!showOvertimeBalanceInPreview}
+            aria-describedby="start-balance-help"
+            onChange={(event) => patch({ startBalanceMinutes: parseDurationToMinutes(event.target.value) ?? settings.startBalanceMinutes })}
+          />
         </label>
+        <p className="muted wide" id="start-balance-help">
+          {showOvertimeBalanceInPreview
+            ? "Anfangswert deines Gleitzeitkontos zum ersten Rechentag."
+            : "Im aktuellen Arbeitsmodell ist das Gleitzeitkonto nicht aktiv."}
+        </p>
         <label>
           Erster Rechentag
           <input type="date" value={settings.trackingStartDate ?? ""} onChange={(event) => patch({ trackingStartDate: event.target.value || null })} />
         </label>
-        <div className="wide">
-          <span className="field-title">Arbeitstage</span>
-          <div className="segmented">
-            {weekdays.map((day) => (
-              <button
-                type="button"
-                className={settings.workdays.includes(day.value) ? "active" : ""}
-                key={day.value}
-                onClick={() => patch({ workdays: settings.workdays.includes(day.value) ? settings.workdays.filter((value) => value !== day.value) : [...settings.workdays, day.value] })}
-              >
-                {day.label}
-              </button>
-            ))}
-          </div>
-        </div>
         <label className="switch-row wide">
           <input type="checkbox" checked={settings.autoBreakEnabled} onChange={(event) => patch({ autoBreakEnabled: event.target.checked })} />
           Automatische Pause aktivieren

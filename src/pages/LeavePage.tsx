@@ -80,6 +80,13 @@ export function LeavePage({ data, refresh }: { data: AppData; refresh: () => Pro
     await refresh();
   }
 
+  const mode = data.settings.workModelMode;
+  const modeHint = mode === "no_target_tracking"
+    ? "Im aktuellen Arbeitsmodell wirkt Urlaub nur als Markierung. TimeGlass berechnet keine Sollzeit-Korrektur."
+    : mode === "variable_weekly_target"
+      ? "Im aktuellen Arbeitsmodell wirkt Urlaub als Markierung. Die Wochenziel-Berechnung wird nicht automatisch reduziert."
+      : null;
+
   return (
     <div className="page-stack">
       <div className="section-heading">
@@ -89,6 +96,7 @@ export function LeavePage({ data, refresh }: { data: AppData; refresh: () => Pro
         </div>
       </div>
       {message && <div className="success-banner">{message}</div>}
+      {modeHint && <div className="inline-warning">{modeHint}</div>}
       <div className="card-grid">
         <StatCard label="Jahresurlaub" value={`${overview.annualDays} T`} detail={`+ ${overview.carryoverDays} T Übertrag`} />
         <StatCard label="Genommen" value={`${overview.takenDays.toFixed(1)} T`} />

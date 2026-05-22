@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(echo '{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"C:\\\\\\\\Stempeluhr\\\\\\\\src\\\\\\\\main.tsx\"}}')",
+      "Bash(echo '{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"C:\\\\\\\\Stempeluhr\\\\\\\\src-tauri\\\\\\\\lib.rs\"}}')",
+      "Bash(echo '{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"C:\\\\\\\\Stempeluhr\\\\\\\\src\\\\\\\\db.ts\"}}')",
+      "Bash(node *)",
+      "Bash(git *)"
+    ]
+  }
+}

@@ -47,7 +47,7 @@ export function findSuspiciousDays(
   }
 
   for (const day of days) {
-    if (day.targetMinutes > 0 && day.netMinutes === 0 && !day.hasActiveSession) {
+    if (day.targetMinutes != null && day.targetMinutes > 0 && day.netMinutes === 0 && !day.hasActiveSession) {
       issues.push({
         type: "zero_net_on_workday",
         date: day.date,

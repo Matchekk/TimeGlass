@@ -6,6 +6,17 @@ export function formatMinutes(totalMinutes: number, withSign = false): string {
   return `${sign}${hours}:${String(minutes).padStart(2, "0")}`;
 }
 
+export const NO_TARGET_PLACEHOLDER = "—";
+
+export function formatMinutesOrDash(
+  totalMinutes: number | null | undefined,
+  withSign = false,
+  placeholder: string = NO_TARGET_PLACEHOLDER,
+): string {
+  if (totalMinutes == null) return placeholder;
+  return formatMinutes(totalMinutes, withSign);
+}
+
 export function formatMinutesSpoken(totalMinutes: number, withSign = false): string {
   const rounded = Math.round(totalMinutes);
   const sign = rounded < 0 ? "minus " : withSign && rounded > 0 ? "plus " : "";

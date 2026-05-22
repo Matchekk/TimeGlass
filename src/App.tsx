@@ -35,7 +35,7 @@ export interface AppData {
   entries: TimeEntry[];
   overrides: DayOverride[];
   leaveEntries: LeaveEntry[];
-  flexBalanceMinutes: number;
+  flexBalanceMinutes: number | null;
 }
 
 const nav = [
@@ -61,10 +61,29 @@ function leaveTypeToDayType(type: string): DayType {
 
 function applyLeaveToSummary(summary: DaySummary, leave: LeaveEntry | undefined, settings: Settings, hasOverride: boolean): DaySummary {
   if (!leave || hasOverride) return summary;
-  if (settings.defaultPaidAbsenceBehavior === "counts_as_target" && summary.netMinutes === 0 && summary.targetMinutes > 0) {
+  if (settings.workModelMode === "no_target_tracking") {
     return {
       ...summary,
-      netMinutes: summary.targetMinutes,
+      targetMinutes: null,
+      differenceMinutes: null,
+      dayType: leaveTypeToDayType(leave.type),
+      note: leave.note ?? leaveTypeLabel(leave.type),
+    };
+  }
+  if (settings.workModelMode === "variable_weekly_target") {
+    return {
+      ...summary,
+      targetMinutes: null,
+      differenceMinutes: null,
+      dayType: leaveTypeToDayType(leave.type),
+      note: leave.note ?? leaveTypeLabel(leave.type),
+    };
+  }
+  const target = summary.targetMinutes ?? 0;
+  if (settings.defaultPaidAbsenceBehavior === "counts_as_target" && summary.netMinutes === 0 && target > 0) {
+    return {
+      ...summary,
+      netMinutes: target,
       differenceMinutes: 0,
       dayType: leaveTypeToDayType(leave.type),
       note: leave.note ?? leaveTypeLabel(leave.type),
@@ -152,7 +171,7 @@ export function App() {
         entries,
         overrides,
         leaveEntries,
-        flexBalanceMinutes: calculateFlexBalance(allDays, settings.startBalanceMinutes),
+        flexBalanceMinutes: calculateFlexBalance(allDays, settings.startBalanceMinutes, { settings, kind: "year" }),
       });
       setError(null);
     } catch (err) {
@@ -249,8 +268,10 @@ export function App() {
     return <DashboardPage {...common} navigate={setPage} />;
   }, [liveData, page, refresh, selectedMonth]);
 
-  const weekTotal = data ? summarizePeriod(data.week) : null;
-  const todayRemaining = liveData ? Math.max(0, liveData.today.targetMinutes - liveData.today.netMinutes) : null;
+  const weekTotal = data ? summarizePeriod(data.week, { settings: data.settings, kind: "week" }) : null;
+  const todayRemaining = liveData && liveData.today.targetMinutes != null
+    ? Math.max(0, liveData.today.targetMinutes - liveData.today.netMinutes)
+    : null;
 
   return (
     <div className="app-shell">
@@ -282,11 +303,11 @@ export function App() {
         </nav>
         {todayRemaining != null && (
           <div className="sidebar-meta compact">
-            <span>Heute noch offen</span>
+            <span>Rest bis Tages-Soll</span>
             <strong>{formatMinutes(todayRemaining)}</strong>
           </div>
         )}
-        {weekTotal && (
+        {weekTotal && weekTotal.differenceMinutes != null && (
           <div className="sidebar-meta">
             <span>Wochenbilanz</span>
             <strong>{weekTotal.differenceMinutes >= 0 ? "+" : ""}{Math.round(weekTotal.differenceMinutes / 60 * 10) / 10} h</strong>

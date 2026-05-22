@@ -60,6 +60,7 @@ export function getReminderDecisions(
   if (
     settings.reminderTargetReachedEnabled &&
     state.targetReachedDate !== date &&
+    today.targetMinutes != null &&
     today.targetMinutes > 0 &&
     today.netMinutes >= today.targetMinutes
   ) {

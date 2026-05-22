@@ -1,4 +1,13 @@
-import type { DayOverride, DaySummary, DayType, PeriodSummary, Settings, TimeEntry } from "../types";
+import type {
+  DayOverride,
+  DaySummary,
+  DayType,
+  PeriodKind,
+  PeriodSummary,
+  Settings,
+  TimeEntry,
+  WorkModelMode,
+} from "../types";
 import { fromDateKey, toDateKey } from "./dateUtils";
 
 export const defaultSettings: Settings = {
@@ -27,6 +36,12 @@ export const defaultSettings: Settings = {
   vacationYear: new Date().getFullYear(),
   defaultPaidAbsenceBehavior: "target_zero",
   lastExportAt: null,
+  workModelMode: "fixed_daily",
+  weeklyTargetMinutes: 40 * 60,
+  weekdayTargets: [0, 0, 0, 0, 0, 0, 0],
+  showOvertimeBalance: true,
+  showDailyDelta: true,
+  desiredBalanceMinutes: 30,
 };
 
 function clampMinutes(value: number): number {
@@ -55,13 +70,54 @@ export function roundMinutes(minutes: number, mode: Settings["roundingMode"]): n
   return Math.round(minutes / step) * step;
 }
 
-export function getTargetMinutes(dateKey: string, override: DayOverride | undefined, settings: Settings): number {
-  if (settings.trackingStartDate && dateKey < settings.trackingStartDate) return 0;
-  if (override?.target_minutes != null) return override.target_minutes;
+export function shouldShowDailyDelta(settings: Settings): boolean {
+  if (!settings.showDailyDelta) return false;
+  return settings.workModelMode !== "variable_weekly_target" && settings.workModelMode !== "no_target_tracking";
+}
+
+export function shouldShowOvertimeBalance(settings: Settings): boolean {
+  if (!settings.showOvertimeBalance) return false;
+  return settings.workModelMode !== "no_target_tracking";
+}
+
+export function shouldShowPeriodTarget(settings: Settings): boolean {
+  return settings.workModelMode !== "no_target_tracking";
+}
+
+export function getTargetMinutesForDate(
+  dateKey: string,
+  override: DayOverride | undefined,
+  settings: Settings,
+): number | null {
+  if (settings.trackingStartDate && dateKey < settings.trackingStartDate) return null;
+  if (override?.target_minutes != null) return Math.max(0, override.target_minutes);
+
   const dayType = override?.day_type ?? "work";
+  const mode: WorkModelMode = settings.workModelMode;
+
+  if (mode === "no_target_tracking") return null;
   if (dayType === "sick" || dayType === "vacation" || dayType === "free") return 0;
+  if (mode === "variable_weekly_target") return null;
+
   const weekday = fromDateKey(dateKey).getDay();
+
+  if (mode === "custom_weekday_targets") {
+    const value = settings.weekdayTargets[weekday];
+    return Math.max(0, Number.isFinite(value) ? Math.round(value) : 0);
+  }
+
+  if (mode === "fixed_weekly_distributed") {
+    if (!settings.workdays.includes(weekday)) return 0;
+    const activeCount = settings.workdays.length;
+    if (activeCount === 0) return 0;
+    return Math.round(Math.max(0, settings.weeklyTargetMinutes) / activeCount);
+  }
+
   return settings.workdays.includes(weekday) ? settings.standardTargetMinutes : 0;
+}
+
+export function getTargetMinutes(dateKey: string, override: DayOverride | undefined, settings: Settings): number {
+  return getTargetMinutesForDate(dateKey, override, settings) ?? 0;
 }
 
 export function getBreakMinutes(grossMinutes: number, override: DayOverride | undefined, settings: Settings): number {
@@ -70,6 +126,11 @@ export function getBreakMinutes(grossMinutes: number, override: DayOverride | un
     return Math.min(settings.autoBreakMinutes, grossMinutes);
   }
   return 0;
+}
+
+function differenceFor(netMinutes: number, targetMinutes: number | null): number | null {
+  if (targetMinutes == null) return null;
+  return netMinutes - targetMinutes;
 }
 
 export function summarizeDay(
@@ -85,9 +146,12 @@ export function summarizeDay(
   });
   const starts = dayEntries.map((entry) => entry.start_time).sort();
   const ended = dayEntries.filter((entry) => entry.end_time).map((entry) => entry.end_time as string).sort();
-  const grossMinutes = dayEntries.reduce((sum, entry) => sum + roundMinutes(minutesWithinDay(entry, dateKey, now), settings.roundingMode), 0);
+  const grossMinutes = dayEntries.reduce(
+    (sum, entry) => sum + roundMinutes(minutesWithinDay(entry, dateKey, now), settings.roundingMode),
+    0,
+  );
   const breakMinutes = getBreakMinutes(grossMinutes, override, settings);
-  const targetMinutes = getTargetMinutes(dateKey, override, settings);
+  const targetMinutes = getTargetMinutesForDate(dateKey, override, settings);
   const dayType: DayType = override?.day_type ?? "work";
   const netMinutes = Math.max(0, grossMinutes - breakMinutes);
 
@@ -99,34 +163,165 @@ export function summarizeDay(
     breakMinutes,
     netMinutes,
     targetMinutes,
-    differenceMinutes: netMinutes - targetMinutes,
+    differenceMinutes: differenceFor(netMinutes, targetMinutes),
     hasActiveSession: dayEntries.some((entry) => !entry.end_time),
     dayType,
     note: override?.note ?? null,
   };
 }
 
-export function summarizePeriod(summaries: DaySummary[]): PeriodSummary {
-  return summaries.reduce(
-    (total, day) => ({
-      netMinutes: total.netMinutes + day.netMinutes,
-      targetMinutes: total.targetMinutes + day.targetMinutes,
-      differenceMinutes: total.differenceMinutes + day.differenceMinutes,
-    }),
-    { netMinutes: 0, targetMinutes: 0, differenceMinutes: 0 },
-  );
+interface PeriodOptions {
+  settings?: Settings;
+  kind?: PeriodKind;
 }
 
-export function calculateFlexBalance(summaries: DaySummary[], startBalanceMinutes: number): number {
-  return startBalanceMinutes + summaries.reduce((sum, day) => sum + day.differenceMinutes, 0);
+function applicableDayCount(summaries: DaySummary[], settings: Settings | undefined): number {
+  if (!settings) return summaries.length;
+  if (!settings.trackingStartDate) return summaries.length;
+  return summaries.filter((day) => day.date >= settings.trackingStartDate!).length;
+}
+
+function periodTargetForSummaries(
+  summaries: DaySummary[],
+  options?: PeriodOptions,
+): number | null {
+  const settings = options?.settings;
+  if (settings && settings.workModelMode === "no_target_tracking") return null;
+
+  if (settings && settings.workModelMode === "variable_weekly_target") {
+    const kind = options?.kind ?? "week";
+    if (kind === "week") return Math.max(0, settings.weeklyTargetMinutes);
+    const dayCount = applicableDayCount(summaries, settings);
+    if (dayCount === 0) return 0;
+    return Math.round((Math.max(0, settings.weeklyTargetMinutes) / 7) * dayCount);
+  }
+
+  const definedTargets = summaries.filter((day) => day.targetMinutes != null);
+  if (definedTargets.length === 0) return null;
+  return definedTargets.reduce((sum, day) => sum + (day.targetMinutes ?? 0), 0);
+}
+
+export function summarizePeriod(summaries: DaySummary[], options?: PeriodOptions): PeriodSummary {
+  const netMinutes = summaries.reduce((sum, day) => sum + day.netMinutes, 0);
+  const targetMinutes = periodTargetForSummaries(summaries, options);
+  const differenceMinutes = targetMinutes == null ? null : netMinutes - targetMinutes;
+  return { netMinutes, targetMinutes, differenceMinutes };
+}
+
+export function calculateFlexBalance(
+  summaries: DaySummary[],
+  startBalanceMinutes: number,
+  options?: PeriodOptions,
+): number | null {
+  const settings = options?.settings;
+  if (settings && settings.workModelMode === "no_target_tracking") return null;
+  if (settings && settings.workModelMode === "variable_weekly_target") {
+    const total = summarizePeriod(summaries, { settings, kind: options?.kind ?? "year" });
+    if (total.differenceMinutes == null) return null;
+    return startBalanceMinutes + total.differenceMinutes;
+  }
+  const diffSum = summaries.reduce((sum, day) => sum + (day.differenceMinutes ?? 0), 0);
+  return startBalanceMinutes + diffSum;
+}
+
+export function calculateTotalTrackedTime(summaries: DaySummary[]): number {
+  return summaries.reduce((sum, day) => sum + day.netMinutes, 0);
 }
 
 export interface LeaveTimeEstimate {
   targetReached: boolean;
+  hasDailyTarget: boolean;
   leaveAtZero: Date | null;
   leaveAtDesiredPlus: Date | null;
   minutesUntilZero: number;
   minutesUntilDesiredPlus: number;
+}
+
+export interface TodayExitInput {
+  todayNetMinutes: number;
+  todayTargetMinutes: number | null;
+  balanceBeforeTodayMinutes: number | null;
+  desiredBalanceMinutes?: number;
+  now?: Date;
+  isCurrentlyTracking?: boolean;
+}
+
+export interface TodayExitOptions {
+  remainingToDailyTargetMinutes: number | null;
+  currentBalanceIncludingTodayMinutes: number | null;
+  remainingToZeroBalanceMinutes: number | null;
+  remainingToDesiredBalanceMinutes: number | null;
+  dailyTargetReached: boolean | null;
+  zeroBalanceReached: boolean | null;
+  desiredBalanceReached: boolean | null;
+  exitAtZeroBalance: Date | null;
+  exitAtDesiredBalance: Date | null;
+  coveredByFlexMinutes: number | null;
+}
+
+export function calculateTodayExitOptions(input: TodayExitInput): TodayExitOptions {
+  const {
+    todayNetMinutes,
+    todayTargetMinutes,
+    balanceBeforeTodayMinutes,
+    desiredBalanceMinutes = 0,
+    now = new Date(),
+    isCurrentlyTracking = false,
+  } = input;
+
+  const hasDailyTarget = todayTargetMinutes != null;
+  const hasFlexAccount = balanceBeforeTodayMinutes != null;
+
+  const remainingToDailyTargetMinutes = hasDailyTarget
+    ? Math.max(0, todayTargetMinutes! - todayNetMinutes)
+    : null;
+  const dailyTargetReached = hasDailyTarget
+    ? todayTargetMinutes! === 0 || todayNetMinutes >= todayTargetMinutes!
+    : null;
+
+  const accountActive = hasDailyTarget && hasFlexAccount;
+  const currentBalanceIncludingTodayMinutes = accountActive
+    ? balanceBeforeTodayMinutes! + todayNetMinutes - todayTargetMinutes!
+    : null;
+
+  const remainingToZeroBalanceMinutes = currentBalanceIncludingTodayMinutes == null
+    ? null
+    : Math.max(0, 0 - currentBalanceIncludingTodayMinutes);
+
+  const remainingToDesiredBalanceMinutes = currentBalanceIncludingTodayMinutes == null
+    ? null
+    : Math.max(0, desiredBalanceMinutes - currentBalanceIncludingTodayMinutes);
+
+  const zeroBalanceReached = remainingToZeroBalanceMinutes == null
+    ? null
+    : remainingToZeroBalanceMinutes === 0;
+  const desiredBalanceReached = remainingToDesiredBalanceMinutes == null
+    ? null
+    : remainingToDesiredBalanceMinutes === 0;
+
+  const coveredByFlexMinutes = remainingToDailyTargetMinutes == null || remainingToZeroBalanceMinutes == null
+    ? null
+    : Math.max(0, remainingToDailyTargetMinutes - remainingToZeroBalanceMinutes);
+
+  const exitAtZeroBalance = isCurrentlyTracking && remainingToZeroBalanceMinutes != null
+    ? new Date(now.getTime() + remainingToZeroBalanceMinutes * 60_000)
+    : null;
+  const exitAtDesiredBalance = isCurrentlyTracking && remainingToDesiredBalanceMinutes != null
+    ? new Date(now.getTime() + remainingToDesiredBalanceMinutes * 60_000)
+    : null;
+
+  return {
+    remainingToDailyTargetMinutes,
+    currentBalanceIncludingTodayMinutes,
+    remainingToZeroBalanceMinutes,
+    remainingToDesiredBalanceMinutes,
+    dailyTargetReached,
+    zeroBalanceReached,
+    desiredBalanceReached,
+    exitAtZeroBalance,
+    exitAtDesiredBalance,
+    coveredByFlexMinutes,
+  };
 }
 
 export function calculateLeaveTimeEstimate(
@@ -135,15 +330,18 @@ export function calculateLeaveTimeEstimate(
   desiredPlusMinutes: number,
   now = new Date(),
 ): LeaveTimeEstimate {
-  const remainingToZero = Math.max(0, today.targetMinutes - today.netMinutes);
-  const desiredNetMinutes = today.targetMinutes + Math.max(0, desiredPlusMinutes);
+  const hasDailyTarget = today.targetMinutes != null;
+  const target = today.targetMinutes ?? 0;
+  const remainingToZero = Math.max(0, target - today.netMinutes);
+  const desiredNetMinutes = target + Math.max(0, desiredPlusMinutes);
   const remainingToDesiredPlus = Math.max(0, desiredNetMinutes - today.netMinutes);
   const active = Boolean(activeEntry && !activeEntry.end_time);
 
   return {
-    targetReached: today.targetMinutes === 0 || today.netMinutes >= today.targetMinutes,
-    leaveAtZero: active ? new Date(now.getTime() + remainingToZero * 60_000) : null,
-    leaveAtDesiredPlus: active ? new Date(now.getTime() + remainingToDesiredPlus * 60_000) : null,
+    targetReached: hasDailyTarget && (target === 0 || today.netMinutes >= target),
+    hasDailyTarget,
+    leaveAtZero: active && hasDailyTarget ? new Date(now.getTime() + remainingToZero * 60_000) : null,
+    leaveAtDesiredPlus: active && hasDailyTarget ? new Date(now.getTime() + remainingToDesiredPlus * 60_000) : null,
     minutesUntilZero: remainingToZero,
     minutesUntilDesiredPlus: remainingToDesiredPlus,
   };

@@ -18,7 +18,14 @@ export function StatCard({ label, value, detail, tone = "neutral" }: Props) {
   );
 }
 
-export function DiffValue({ minutes }: { minutes: number }) {
+export function DiffValue({ minutes, inactiveLabel = "keine Differenz" }: { minutes: number | null; inactiveLabel?: string }) {
+  if (minutes == null) {
+    return (
+      <span className="diff diff-inactive" aria-label={inactiveLabel}>
+        —
+      </span>
+    );
+  }
   const label = minutes >= 0 ? "Plus" : "Minus";
   return (
     <span className={minutes >= 0 ? "diff positive-text" : "diff negative-text"} aria-label={`${label} ${formatMinutes(minutes)}`}>
