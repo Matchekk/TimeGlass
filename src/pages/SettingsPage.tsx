@@ -1,16 +1,18 @@
-import { Download, FileJson, Save, Upload } from "lucide-react";
+import { CalendarCheck, Download, FileJson, FolderOpen, HardDriveDownload, Save, Upload } from "lucide-react";
 import { getVersion } from "@tauri-apps/api/app";
+import { invoke } from "@tauri-apps/api/core";
 import { enable, disable, isEnabled } from "@tauri-apps/plugin-autostart";
 import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
-import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { saveSettings } from "../db/settings";
 import { databaseDisplayPath } from "../db/schema";
 import { countTimeEntries, exportData, importData } from "../db/timeEntries";
-import { countLeaveEntries } from "../db/leaveEntries";
+import { countLeaveEntries, importPublicHolidays } from "../db/leaveEntries";
 import { formatMinutes, parseDurationToMinutes } from "../lib/formatting";
+import { germanHolidays, REGION_LABELS } from "../lib/holidays";
 import { getTargetMinutesForDate, shouldShowDailyDelta, shouldShowOvertimeBalance, todayKey } from "../lib/timeCalculations";
 import type { AppData } from "../App";
-import type { ImportExportPayload, Settings, WorkModelMode } from "../types";
+import type { GermanRegion, ImportExportPayload, Settings, TrayLeftClickAction, WorkModelMode } from "../types";
 
 const weekdays = [
   { value: 1, label: "Mo" },
@@ -154,6 +156,43 @@ export function SettingsPage({ data, refresh }: { data: AppData; refresh: () => 
       setMessage(err instanceof Error ? `Import fehlgeschlagen: ${err.message}` : "Import fehlgeschlagen. Bitte eine gültige TimeGlass-JSON-Datei auswählen.");
     } finally {
       event.target.value = "";
+    }
+  }
+
+  async function runManualBackup() {
+    try {
+      const label = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+      const path = await invoke<string>("create_db_backup", { retention: settings.autoBackupRetention, label });
+      setMessage(`Backup erstellt: ${path}`);
+    } catch (err) {
+      setMessage(err instanceof Error ? `Backup fehlgeschlagen: ${err.message}` : "Backup fehlgeschlagen.");
+    }
+  }
+
+  async function openBackupFolder() {
+    try {
+      await invoke("open_backup_dir");
+    } catch (err) {
+      setMessage(err instanceof Error ? `Backup-Ordner: ${err.message}` : "Backup-Ordner konnte nicht geöffnet werden.");
+    }
+  }
+
+  async function importHolidays() {
+    if (settings.holidayRegion === "none") {
+      setMessage("Bitte zuerst ein Bundesland für die Feiertage auswählen.");
+      return;
+    }
+    const year = settings.vacationYear || new Date().getFullYear();
+    try {
+      const count = await importPublicHolidays(germanHolidays(year, settings.holidayRegion));
+      setMessage(
+        count > 0
+          ? `${count} Feiertage für ${year} (${REGION_LABELS[settings.holidayRegion]}) importiert.`
+          : `Keine neuen Feiertage – ${year} ist bereits vollständig hinterlegt.`,
+      );
+      await refresh();
+    } catch (err) {
+      setMessage(err instanceof Error ? `Feiertags-Import fehlgeschlagen: ${err.message}` : "Feiertags-Import fehlgeschlagen.");
     }
   }
 
@@ -419,6 +458,41 @@ export function SettingsPage({ data, refresh }: { data: AppData; refresh: () => 
       </section>
 
       <section className="glass-panel settings-form">
+        <h2 className="wide">Stempeln & Tastenkürzel</h2>
+        <label className="switch-row wide">
+          <input type="checkbox" checked={settings.globalShortcutEnabled} onChange={(event) => patch({ globalShortcutEnabled: event.target.checked })} />
+          Globaler Hotkey zum Ein-/Ausstempeln
+        </label>
+        <label>
+          Tastenkürzel
+          <input
+            value={settings.globalShortcutAccelerator}
+            placeholder="CmdOrCtrl+Alt+T"
+            aria-describedby="hotkey-help"
+            onChange={(event) => patch({ globalShortcutAccelerator: event.target.value })}
+          />
+        </label>
+        <p className="muted wide" id="hotkey-help">Format z. B. „CmdOrCtrl+Alt+T“ oder „Alt+Shift+S“. Wirkt systemweit, auch wenn das Fenster geschlossen ist.</p>
+        <label>
+          Tray-Linksklick
+          <select value={settings.trayLeftClickAction} onChange={(event) => patch({ trayLeftClickAction: event.target.value as TrayLeftClickAction })}>
+            <option value="open">Fenster öffnen</option>
+            <option value="toggle_punch">Ein-/Ausstempeln</option>
+          </select>
+        </label>
+        <label className="switch-row wide">
+          <input type="checkbox" checked={settings.idleDetectionEnabled} onChange={(event) => patch({ idleDetectionEnabled: event.target.checked })} />
+          Abwesenheit erkennen während laufender Session
+        </label>
+        <label>
+          Idle-Schwelle
+          <input value={formatMinutes(settings.idleThresholdMinutes)} onChange={(event) => patch({ idleThresholdMinutes: parseDurationToMinutes(event.target.value) ?? settings.idleThresholdMinutes })} />
+        </label>
+        <p className="muted wide">Bei Inaktivität über dieser Dauer schlägt TimeGlass vor, die Abwesenheit von der laufenden Session abzuziehen.</p>
+        <button className="secondary-button wide" type="button" onClick={() => void persistSettings("Stempel-Einstellungen gespeichert.")}><Save size={16} aria-hidden="true" /> Stempeln speichern</button>
+      </section>
+
+      <section className="glass-panel settings-form">
         <h2 className="wide">Reminder</h2>
         {remindersEnabled && diagnostics.notificationPermission !== "ja" && (
           <div className="inline-warning wide">Benachrichtigungen sind noch nicht erlaubt. TimeGlass fragt erst beim Speichern der Reminder nach.</div>
@@ -479,7 +553,19 @@ export function SettingsPage({ data, refresh }: { data: AppData; refresh: () => 
             <option value="counts_as_target">Als Sollzeit erfüllt markieren</option>
           </select>
         </label>
-        <button className="secondary-button wide" type="button" onClick={() => void persistSettings("Urlaubseinstellungen gespeichert.")}><Save size={16} aria-hidden="true" /> Urlaub speichern</button>
+        <label>
+          Bundesland (Feiertage)
+          <select value={settings.holidayRegion} onChange={(event) => patch({ holidayRegion: event.target.value as GermanRegion })}>
+            {Object.entries(REGION_LABELS).map(([code, label]) => (
+              <option value={code} key={code}>{label}</option>
+            ))}
+          </select>
+        </label>
+        <p className="muted wide">Importiert gesetzliche Feiertage des gewählten Bundeslands für das Urlaubsjahr als ganztägige Feiertags-Einträge (bereits vorhandene werden übersprungen).</p>
+        <div className="button-row wide">
+          <button className="secondary-button" type="button" disabled={settings.holidayRegion === "none"} onClick={() => void importHolidays()}><CalendarCheck size={16} aria-hidden="true" /> Feiertage {settings.vacationYear || new Date().getFullYear()} importieren</button>
+          <button className="secondary-button" type="button" onClick={() => void persistSettings("Urlaubseinstellungen gespeichert.")}><Save size={16} aria-hidden="true" /> Urlaub speichern</button>
+        </div>
       </section>
 
       <section className="glass-panel settings-form">
@@ -488,11 +574,23 @@ export function SettingsPage({ data, refresh }: { data: AppData; refresh: () => 
           Datenbank-Speicherort
           <input readOnly value={databaseDisplayPath} />
         </label>
-        <p className="muted wide">Regelmäßige JSON-Backups sind empfohlen. Es gibt keine Cloud-Sicherung.</p>
+        <p className="muted wide">Regelmäßige Backups sind empfohlen. Es gibt keine Cloud-Sicherung.</p>
+        <label className="switch-row wide">
+          <input type="checkbox" checked={settings.autoBackupEnabled} onChange={(event) => patch({ autoBackupEnabled: event.target.checked })} />
+          Automatisches DB-Backup beim Start
+        </label>
+        <label>
+          Aufbewahrung (Anzahl)
+          <input type="number" min={1} value={settings.autoBackupRetention} onChange={(event) => patch({ autoBackupRetention: Math.max(1, Number(event.target.value) || 1) })} />
+        </label>
+        <div className="button-row wide">
+          <button className="secondary-button" type="button" onClick={() => void persistSettings("Backup-Einstellungen gespeichert.")}><Save size={16} aria-hidden="true" /> Backup-Optionen speichern</button>
+          <button className="secondary-button" type="button" onClick={() => void runManualBackup()}><HardDriveDownload size={16} aria-hidden="true" /> DB-Backup jetzt</button>
+          <button className="secondary-button" type="button" onClick={() => void openBackupFolder()}><FolderOpen size={16} aria-hidden="true" /> Backup-Ordner öffnen</button>
+        </div>
         <div className="button-row wide">
           <button className="secondary-button" type="button" onClick={() => void exportCsv()}><Download size={16} aria-hidden="true" /> CSV exportieren</button>
           <button className="secondary-button" type="button" onClick={() => void exportJson()}><FileJson size={16} aria-hidden="true" /> JSON exportieren</button>
-          <button className="secondary-button" type="button" onClick={() => void exportJson()}><FileJson size={16} aria-hidden="true" /> Backup jetzt erstellen</button>
           <button className="secondary-button" type="button" onClick={() => fileInput.current?.click()}><Upload size={16} aria-hidden="true" /> JSON importieren</button>
           <input ref={fileInput} hidden type="file" accept="application/json" onChange={(event) => void importJson(event)} />
         </div>

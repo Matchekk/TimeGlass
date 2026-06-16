@@ -1,7 +1,8 @@
 import { StatCard } from "../components/StatCard";
 import { getMonthDates, hasMonthStarted } from "../lib/dateUtils";
-import { formatMinutes, formatMinutesOrDash, formatMinutesSpoken } from "../lib/formatting";
+import { formatDate, formatMinutes, formatMinutesOrDash, formatMinutesSpoken } from "../lib/formatting";
 import { summarizePeriod } from "../lib/timeCalculations";
+import { computeStatistics, formatStartMinutes } from "../lib/statistics";
 import type { AppData } from "../App";
 
 export function YearPage({ data, onMonthSelect }: { data: AppData; refresh: () => Promise<void>; onMonthSelect: (monthDate: Date) => void }) {
@@ -9,6 +10,7 @@ export function YearPage({ data, onMonthSelect }: { data: AppData; refresh: () =
   const visibleYearDays = data.year.filter((day) => hasMonthStarted(new Date(`${day.date}T00:00:00`), now));
   const total = summarizePeriod(visibleYearDays, { settings: data.settings, kind: "year" });
   const noTargetMode = data.settings.workModelMode === "no_target_tracking";
+  const stats = computeStatistics(visibleYearDays);
   return (
     <div className="page-stack">
       <div className="section-heading">
@@ -79,6 +81,40 @@ export function YearPage({ data, onMonthSelect }: { data: AppData; refresh: () =
           );
         })}
       </section>
+
+      {stats.workedDays > 0 && (
+        <section className="glass-panel" aria-label="Trends">
+          <div className="section-heading">
+            <div>
+              <span>Trends</span>
+              <h2>Auswertung {now.getFullYear()}</h2>
+            </div>
+          </div>
+          <div className="card-grid">
+            <StatCard label="Erfasste Tage" value={String(stats.workedDays)} detail="mit Arbeitszeit" />
+            <StatCard label="Ø Arbeitsbeginn" value={formatStartMinutes(stats.averageStartMinutes)} detail="über erfasste Tage" />
+            <StatCard label="Ø Nettozeit/Tag" value={formatMinutesOrDash(stats.averageNetMinutes)} detail="pro Arbeitstag" />
+            <StatCard
+              label="Längster Tag"
+              value={stats.longestDay ? formatMinutes(stats.longestDay.netMinutes) : "—"}
+              detail={stats.longestDay ? formatDate(stats.longestDay.date) : undefined}
+            />
+            <StatCard
+              label="Kürzester Tag"
+              value={stats.shortestDay ? formatMinutes(stats.shortestDay.netMinutes) : "—"}
+              detail={stats.shortestDay ? formatDate(stats.shortestDay.date) : undefined}
+            />
+            {!noTargetMode && (
+              <StatCard
+                label="Plus / Minus / Soll-Tage"
+                value={`${stats.overtimeDays} / ${stats.undertimeDays} / ${stats.onTargetDays}`}
+                detail="Tage über / unter / genau Soll"
+                tone={stats.overtimeDays >= stats.undertimeDays ? "positive" : "negative"}
+              />
+            )}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

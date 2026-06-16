@@ -11,6 +11,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { register, unregisterAll } from "@tauri-apps/plugin-global-shortcut";
 import {
 	isPermissionGranted,
 	sendNotification,
@@ -31,6 +32,7 @@ import type {
 	TimeEntry,
 } from "./types";
 import {
+	getActiveEntry,
 	getAllEntries,
 	getAllOverrides,
 	getEntriesForDateKeys,
@@ -39,6 +41,7 @@ import {
 	stopActiveEntry,
 } from "./db/timeEntries";
 import { getLeaveEntries } from "./db/leaveEntries";
+import { SessionGuards } from "./components/SessionGuards";
 import { getSettings } from "./db/settings";
 import {
 	getMonthDates,
@@ -181,6 +184,8 @@ export function App() {
 	const minimizedOnce = useRef(false);
 	const lastTrayPayload = useRef<string | null>(null);
 	const lastCloseToTray = useRef<boolean | null>(null);
+	const lastTrayLeftClick = useRef<boolean | null>(null);
+	const backupDone = useRef(false);
 
 	// Abgeleiteter, primitiver Wert: aendert die Effekt-Dependency nur, wenn sich der
 	// Status tatsaechlich umschaltet – nicht bei jeder neuen entries-Array-Identitaet.
@@ -289,6 +294,23 @@ export function App() {
 		void refresh();
 	}, [refresh, page]);
 
+	// Gemeinsame Stempel-Logik fuer Tray-Menue, Tray-Linksklick und globalen Hotkey.
+	const togglePunch = useCallback(async () => {
+		try {
+			const active = await getActiveEntry();
+			if (active) await stopActiveEntry();
+			else {
+				await startEntry();
+				resetReminderStateForNewSession(toDateKey());
+			}
+			await refresh();
+		} catch (err) {
+			setError(
+				err instanceof Error ? err.message : "Stempel-Aktion fehlgeschlagen.",
+			);
+		}
+	}, [refresh]);
+
 	const liveData = useMemo(() => {
 		if (!data) return null;
 		const todayOverride = data.overrides.find(
@@ -377,26 +399,70 @@ export function App() {
 
 	useEffect(() => {
 		const unlisteners: Array<() => void> = [];
-		void listen("tray://toggle-punch", async () => {
-			try {
-				const active = data?.entries.find((entry) => !entry.end_time);
-				if (active) await stopActiveEntry();
-				else {
-					await startEntry();
-					resetReminderStateForNewSession(toDateKey());
-				}
-				await refresh();
-			} catch (err) {
-				setError(
-					err instanceof Error ? err.message : "Tray-Aktion fehlgeschlagen.",
-				);
-			}
+		void listen("tray://toggle-punch", () => {
+			void togglePunch();
 		}).then((unlisten) => unlisteners.push(unlisten));
 		void listen("tray://today", () => setPage("today")).then((unlisten) =>
 			unlisteners.push(unlisten),
 		);
 		return () => unlisteners.forEach((unlisten) => unlisten());
-	}, [data?.entries, refresh]);
+	}, [togglePunch]);
+
+	// Tray-Linksklick-Verhalten an die Einstellung koppeln (Fenster oeffnen vs. stempeln).
+	useEffect(() => {
+		if (!data) return;
+		const punch = data.settings.trayLeftClickAction === "toggle_punch";
+		if (lastTrayLeftClick.current === punch) return;
+		lastTrayLeftClick.current = punch;
+		void invoke("set_tray_left_click", { punch }).catch(() => undefined);
+	}, [data?.settings.trayLeftClickAction]);
+
+	// Globalen Hotkey registrieren / aktualisieren.
+	useEffect(() => {
+		let cancelled = false;
+		async function sync() {
+			try {
+				await unregisterAll();
+				if (cancelled || !data) return;
+				if (
+					data.settings.globalShortcutEnabled &&
+					data.settings.globalShortcutAccelerator
+				) {
+					await register(
+						data.settings.globalShortcutAccelerator,
+						(event) => {
+							if (event.state === "Pressed") void togglePunch();
+						},
+					);
+				}
+			} catch {
+				/* ungueltiges Tastenkuerzel ignorieren */
+			}
+		}
+		void sync();
+		return () => {
+			cancelled = true;
+		};
+	}, [
+		data?.settings.globalShortcutEnabled,
+		data?.settings.globalShortcutAccelerator,
+		togglePunch,
+	]);
+
+	// Automatisches DB-Backup einmal pro App-Start.
+	useEffect(() => {
+		if (!data || backupDone.current) return;
+		backupDone.current = true;
+		if (!data.settings.autoBackupEnabled) return;
+		const label = new Date()
+			.toISOString()
+			.slice(0, 16)
+			.replace(/[:T]/g, "-");
+		void invoke("create_db_backup", {
+			retention: data.settings.autoBackupRetention,
+			label,
+		}).catch(() => undefined);
+	}, [data]);
 
 	const content = useMemo(() => {
 		if (!liveData)
@@ -484,6 +550,17 @@ export function App() {
 			</aside>
 			<main className="main-content">
 				{error && <div className="error-banner">{error}</div>}
+				{liveData && (
+					<SessionGuards
+						activeEntry={
+							liveData.entries.find((entry) => !entry.end_time) ?? null
+						}
+						settings={liveData.settings}
+						now={tick}
+						refresh={refresh}
+						onError={setError}
+					/>
+				)}
 				{content}
 			</main>
 		</div>

@@ -3,6 +3,25 @@ export type LeaveType = "vacation" | "sick" | "public_holiday" | "time_off" | "o
 export type LeaveAmount = "full_day" | "half_day" | "custom";
 export type PaidAbsenceBehavior = "target_zero" | "counts_as_target";
 export type RoundingMode = "off" | "5" | "10" | "15";
+export type TrayLeftClickAction = "open" | "toggle_punch";
+export type GermanRegion =
+  | "none"
+  | "BW"
+  | "BY"
+  | "BE"
+  | "BB"
+  | "HB"
+  | "HH"
+  | "HE"
+  | "MV"
+  | "NI"
+  | "NW"
+  | "RP"
+  | "SL"
+  | "SN"
+  | "ST"
+  | "SH"
+  | "TH";
 
 export type WorkModelMode =
   | "fixed_daily"
@@ -64,6 +83,14 @@ export interface Settings {
   showOvertimeBalance: boolean;
   showDailyDelta: boolean;
   desiredBalanceMinutes: number;
+  globalShortcutEnabled: boolean;
+  globalShortcutAccelerator: string;
+  trayLeftClickAction: TrayLeftClickAction;
+  autoBackupEnabled: boolean;
+  autoBackupRetention: number;
+  holidayRegion: GermanRegion;
+  idleDetectionEnabled: boolean;
+  idleThresholdMinutes: number;
 }
 
 export interface DaySummary {

@@ -1,5 +1,5 @@
 import { defaultSettings } from "../lib/timeCalculations";
-import type { Settings, WorkModelMode } from "../types";
+import type { GermanRegion, Settings, TrayLeftClickAction, WorkModelMode } from "../types";
 import { getDb } from "./schema";
 
 const keys = {
@@ -34,7 +34,29 @@ const keys = {
   showOvertimeBalance: "show_overtime_balance",
   showDailyDelta: "show_daily_delta",
   desiredBalanceMinutes: "desired_balance_minutes",
+  globalShortcutEnabled: "global_shortcut_enabled",
+  globalShortcutAccelerator: "global_shortcut_accelerator",
+  trayLeftClickAction: "tray_left_click_action",
+  autoBackupEnabled: "auto_backup_enabled",
+  autoBackupRetention: "auto_backup_retention",
+  holidayRegion: "holiday_region",
+  idleDetectionEnabled: "idle_detection_enabled",
+  idleThresholdMinutes: "idle_threshold_minutes",
 } as const;
+
+const VALID_REGIONS: ReadonlySet<GermanRegion> = new Set([
+  "none", "BW", "BY", "BE", "BB", "HB", "HH", "HE", "MV",
+  "NI", "NW", "RP", "SL", "SN", "ST", "SH", "TH",
+]);
+
+function parseRegion(value: string | undefined): GermanRegion {
+  if (value && VALID_REGIONS.has(value as GermanRegion)) return value as GermanRegion;
+  return defaultSettings.holidayRegion;
+}
+
+function parseTrayLeftClick(value: string | undefined): TrayLeftClickAction {
+  return value === "toggle_punch" ? "toggle_punch" : "open";
+}
 
 const VALID_WORK_MODES: ReadonlySet<WorkModelMode> = new Set([
   "fixed_daily",
@@ -107,6 +129,14 @@ export async function getSettings(): Promise<Settings> {
     showOvertimeBalance: boolValue(values.get(keys.showOvertimeBalance), defaultSettings.showOvertimeBalance),
     showDailyDelta: boolValue(values.get(keys.showDailyDelta), defaultSettings.showDailyDelta),
     desiredBalanceMinutes: numberValue(values.get(keys.desiredBalanceMinutes), defaultSettings.desiredBalanceMinutes),
+    globalShortcutEnabled: boolValue(values.get(keys.globalShortcutEnabled), defaultSettings.globalShortcutEnabled),
+    globalShortcutAccelerator: values.get(keys.globalShortcutAccelerator) || defaultSettings.globalShortcutAccelerator,
+    trayLeftClickAction: parseTrayLeftClick(values.get(keys.trayLeftClickAction)),
+    autoBackupEnabled: boolValue(values.get(keys.autoBackupEnabled), defaultSettings.autoBackupEnabled),
+    autoBackupRetention: Math.max(1, Math.round(numberValue(values.get(keys.autoBackupRetention), defaultSettings.autoBackupRetention))),
+    holidayRegion: parseRegion(values.get(keys.holidayRegion)),
+    idleDetectionEnabled: boolValue(values.get(keys.idleDetectionEnabled), defaultSettings.idleDetectionEnabled),
+    idleThresholdMinutes: Math.max(1, Math.round(numberValue(values.get(keys.idleThresholdMinutes), defaultSettings.idleThresholdMinutes))),
   };
 }
 
@@ -144,6 +174,14 @@ export async function saveSettings(settings: Settings): Promise<void> {
     [keys.showOvertimeBalance, String(settings.showOvertimeBalance)],
     [keys.showDailyDelta, String(settings.showDailyDelta)],
     [keys.desiredBalanceMinutes, String(settings.desiredBalanceMinutes)],
+    [keys.globalShortcutEnabled, String(settings.globalShortcutEnabled)],
+    [keys.globalShortcutAccelerator, settings.globalShortcutAccelerator],
+    [keys.trayLeftClickAction, settings.trayLeftClickAction],
+    [keys.autoBackupEnabled, String(settings.autoBackupEnabled)],
+    [keys.autoBackupRetention, String(settings.autoBackupRetention)],
+    [keys.holidayRegion, settings.holidayRegion],
+    [keys.idleDetectionEnabled, String(settings.idleDetectionEnabled)],
+    [keys.idleThresholdMinutes, String(settings.idleThresholdMinutes)],
   ];
 
   for (const [key, value] of pairs) {

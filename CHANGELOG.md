@@ -11,6 +11,17 @@ Alle nennenswerten Änderungen an TimeGlass werden hier dokumentiert.
 - **Weniger native Tray-Aufrufe**: `update_tray_status`/`set_close_to_tray` werden nur noch ausgelöst, wenn sich der angezeigte Wert tatsächlich ändert (vorher bei jedem Sekunden-Tick).
 - **Stabilere Refresh-Timer-Dependency**: Der Tick-Timer wird nicht mehr bei jeder neuen `entries`-Array-Identität neu aufgesetzt, sondern nur beim echten Umschalten des Session-Status.
 
+### Neu
+
+- **Globaler Hotkey zum Ein-/Ausstempeln**: konfigurierbares systemweites Tastenkürzel (Standard `CmdOrCtrl+Alt+T`) über `tauri-plugin-global-shortcut`. Stempeln ohne das Fenster zu öffnen.
+- **Tray-Linksklick konfigurierbar**: wählbar zwischen „Fenster öffnen“ und „Ein-/Ausstempeln“.
+- **„Vergessen auszustempeln“-Korrektur**: bei sehr langer oder über-Nacht-Session erscheint ein Banner mit Ein-Klick-Korrektur der Ausstempel-Zeit.
+- **Automatische DB-Backups**: beim Start wird die SQLite-Datenbank in einen `backups`-Ordner kopiert; einstellbare Aufbewahrung, manuelles Backup und „Backup-Ordner öffnen“.
+- **Feiertage automatisch**: gesetzliche Feiertage nach Bundesland (inkl. oster-basierter Tage) als ganztägige Feiertags-Einträge importieren.
+- **Abwesenheits-/Idle-Erkennung**: optional; bei längerer Inaktivität während einer Session schlägt TimeGlass vor, die Abwesenheit abzuziehen (Windows-Idle via `GetLastInputInfo`).
+- **Druckbarer Monatsbericht**: Print-Layout (`window.print()`) als Stundenzettel mit Summen.
+- **Trends/Statistik** auf der Jahresseite: Ø Arbeitsbeginn, Ø Nettozeit/Tag, längster/kürzester Tag, Plus-/Minus-/Soll-Tage.
+
 ## 0.3.0
 
 ### Neu

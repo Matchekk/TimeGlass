@@ -1,4 +1,6 @@
 import type { LeaveEntry } from "../types";
+import { eachDateInRange } from "../lib/leaveCalculations";
+import type { Holiday } from "../lib/holidays";
 import { getDb } from "./schema";
 
 export async function getLeaveEntries(): Promise<LeaveEntry[]> {
@@ -59,6 +61,31 @@ export async function replaceLeaveEntries(entries: LeaveEntry[]): Promise<void> 
       ],
     );
   }
+}
+
+/** Legt Feiertage als ganztägige public_holiday-Einträge an. Bereits als
+ * Feiertag belegte Tage werden übersprungen. Gibt die Anzahl neuer Einträge zurück. */
+export async function importPublicHolidays(holidays: Holiday[]): Promise<number> {
+  const db = await getDb();
+  const existing = await getLeaveEntries();
+  const occupied = new Set(
+    existing
+      .filter((entry) => entry.type === "public_holiday")
+      .flatMap((entry) => eachDateInRange(entry.start_date, entry.end_date)),
+  );
+  const now = new Date().toISOString();
+  let inserted = 0;
+  for (const holiday of holidays) {
+    if (occupied.has(holiday.date)) continue;
+    await db.execute(
+      `INSERT INTO leave_entries (type, start_date, end_date, amount, custom_minutes, note, created_at, updated_at)
+       VALUES ('public_holiday', $1, $1, 'full_day', NULL, $2, $3, $3)`,
+      [holiday.date, holiday.name, now],
+    );
+    occupied.add(holiday.date);
+    inserted += 1;
+  }
+  return inserted;
 }
 
 export async function countLeaveEntries(): Promise<number> {

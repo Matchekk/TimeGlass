@@ -15,14 +15,21 @@ export function TodayPage({ data, refresh }: { data: AppData; refresh: () => Pro
   };
   const showDailyDelta = shouldShowDailyDelta(data.settings);
   const noDailyTarget = data.today.targetMinutes == null;
-  const balanceBeforeToday = data.flexBalanceMinutes != null && data.today.differenceMinutes != null
-    ? data.flexBalanceMinutes - data.today.differenceMinutes
-    : null;
+  const isTracking = data.entries.some((entry) => !entry.end_time);
+  // Bei aktiver Session schliesst das Gleitzeitkonto den heutigen Tag bereits aus
+  // (siehe calculateFlexBalance) -> es entspricht dann schon dem Stand "vor heute".
+  const balanceBeforeToday = data.flexBalanceMinutes == null
+    ? null
+    : isTracking
+      ? data.flexBalanceMinutes
+      : data.today.differenceMinutes != null
+        ? data.flexBalanceMinutes - data.today.differenceMinutes
+        : data.flexBalanceMinutes;
   const exitOptions = calculateTodayExitOptions({
     todayNetMinutes: data.today.netMinutes,
     todayTargetMinutes: data.today.targetMinutes,
     balanceBeforeTodayMinutes: balanceBeforeToday,
-    isCurrentlyTracking: data.entries.some((entry) => !entry.end_time),
+    isCurrentlyTracking: isTracking,
   });
   const hasAccountValue = exitOptions.currentBalanceIncludingTodayMinutes != null;
   return (

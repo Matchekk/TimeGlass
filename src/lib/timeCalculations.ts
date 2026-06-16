@@ -42,6 +42,14 @@ export const defaultSettings: Settings = {
 	showOvertimeBalance: true,
 	showDailyDelta: true,
 	desiredBalanceMinutes: 30,
+	globalShortcutEnabled: false,
+	globalShortcutAccelerator: "CmdOrCtrl+Alt+T",
+	trayLeftClickAction: "open",
+	autoBackupEnabled: true,
+	autoBackupRetention: 7,
+	holidayRegion: "none",
+	idleDetectionEnabled: false,
+	idleThresholdMinutes: 15,
 };
 
 function clampMinutes(value: number): number {

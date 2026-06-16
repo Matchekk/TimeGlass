@@ -1,6 +1,7 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Printer } from "lucide-react";
 import { useEffect, useState } from "react";
 import { DayDetail } from "../components/DayDetail";
+import { PrintableReport } from "../components/PrintableReport";
 import { StatCard } from "../components/StatCard";
 import { getCalendarGridDates, hasMonthStarted, isSameMonth } from "../lib/dateUtils";
 import { formatDateSpoken, formatMinutes, formatMinutesOrDash, formatMinutesSpoken } from "../lib/formatting";
@@ -49,6 +50,7 @@ export function MonthPage({
   const override = data.overrides.find((item) => item.date === day.date);
   const showDailyDelta = shouldShowDailyDelta(data.settings);
   const noTargetMode = data.settings.workModelMode === "no_target_tracking";
+  const monthLabel = monthDate.toLocaleDateString("de-DE", { month: "long", year: "numeric" });
 
   useEffect(() => {
     const today = new Date(`${data.today.date}T00:00:00`);
@@ -76,6 +78,9 @@ export function MonthPage({
           </button>
           <button className="icon-button" type="button" aria-label="Nächsten Monat anzeigen" title="Nächster Monat" onClick={() => shiftMonth(1)}>
             <ChevronRight size={18} aria-hidden="true" />
+          </button>
+          <button className="icon-button" type="button" aria-label="Monatsbericht drucken" title="Bericht drucken" disabled={!monthIsVisible} onClick={() => window.print()}>
+            <Printer size={18} aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -129,6 +134,14 @@ export function MonthPage({
         })}
       </section>
       <DayDetail day={day} entries={data.entries} override={override} onChanged={refresh} />
+      {monthIsVisible && (
+        <PrintableReport
+          title={monthLabel}
+          days={monthSummaries}
+          total={total}
+          showTarget={!noTargetMode}
+        />
+      )}
     </div>
   );
 }
