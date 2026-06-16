@@ -45,10 +45,24 @@ fn update_tray_status(
     toggle_label: String,
 ) -> Result<(), String> {
     if let Some(state) = app.try_state::<TrayPreferences>() {
-        if let Some(items) = state.menu_items.lock().map_err(|err| err.to_string())?.as_ref() {
-            items.status.set_text(status).map_err(|err| err.to_string())?;
-            items.session.set_text(session).map_err(|err| err.to_string())?;
-            items.toggle.set_text(toggle_label).map_err(|err| err.to_string())?;
+        if let Some(items) = state
+            .menu_items
+            .lock()
+            .map_err(|err| err.to_string())?
+            .as_ref()
+        {
+            items
+                .status
+                .set_text(status)
+                .map_err(|err| err.to_string())?;
+            items
+                .session
+                .set_text(session)
+                .map_err(|err| err.to_string())?;
+            items
+                .toggle
+                .set_text(toggle_label)
+                .map_err(|err| err.to_string())?;
         }
     }
     Ok(())
@@ -120,7 +134,19 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
 }
 
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    // Single-Instance MUSS als erstes Plugin registriert werden. Verhindert, dass
+    // ein erneuter Start (z. B. Klick auf das Taskleisten-Icon) ein zweites Fenster
+    // oeffnet – stattdessen wird das bestehende Fenster gezeigt und fokussiert.
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            let _ = show_window(app);
+        }));
+    }
+
+    builder
         .manage(TrayPreferences {
             close_to_tray: AtomicBool::new(false),
             menu_items: Mutex::new(None),
@@ -131,7 +157,11 @@ pub fn run() {
             Some(vec!["--autostart"]),
         ))
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_window_state::Builder::default().with_state_flags(StateFlags::all()).build())
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(StateFlags::all())
+                .build(),
+        )
         .plugin(tauri_plugin_sql::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             set_close_to_tray,

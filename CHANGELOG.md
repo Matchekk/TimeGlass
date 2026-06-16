@@ -2,6 +2,15 @@
 
 Alle nennenswerten Änderungen an TimeGlass werden hier dokumentiert.
 
+## Unveröffentlicht
+
+### Behoben
+
+- **Gleitzeitkonto sackt nicht mehr beim Einstempeln ab**: Der aktuell laufende Tag (aktive Session) wird nicht mehr ins Gleitzeitkonto eingerechnet (`calculateFlexBalance` überspringt Tage mit `hasActiveSession`). Bisher zog das volle Tagessoll das Konto sofort beim Einstempeln ins Minus. Das Konto bleibt jetzt auf dem Stand vor heute und aktualisiert sich erst beim Ausstempeln mit der tatsächlich gearbeiteten Tagesdifferenz. Die Konto-Karte weist bei aktiver Session darauf hin (Untertitel „Stand vor heute · aktualisiert beim Ausstempeln").
+- **Nur eine App-Instanz**: `tauri-plugin-single-instance` eingebunden. Ein erneuter Start (z. B. Klick auf das Taskleisten-Icon) öffnet kein zweites Fenster mehr, sondern zeigt und fokussiert das bestehende Fenster (inkl. `unminimize`).
+- **Weniger native Tray-Aufrufe**: `update_tray_status`/`set_close_to_tray` werden nur noch ausgelöst, wenn sich der angezeigte Wert tatsächlich ändert (vorher bei jedem Sekunden-Tick).
+- **Stabilere Refresh-Timer-Dependency**: Der Tick-Timer wird nicht mehr bei jeder neuen `entries`-Array-Identität neu aufgesetzt, sondern nur beim echten Umschalten des Session-Status.
+
 ## 0.3.0
 
 ### Neu
