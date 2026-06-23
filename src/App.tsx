@@ -3,8 +3,11 @@ import {
 	CalendarRange,
 	Clock3,
 	Home,
+	History,
+	Leaf,
 	Plane,
 	Settings as SettingsIcon,
+	Sprout,
 	Timer,
 	WalletCards,
 } from "lucide-react";
@@ -24,7 +27,12 @@ import { MonthPage } from "./pages/MonthPage";
 import { YearPage } from "./pages/YearPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { LeavePage } from "./pages/LeavePage";
+import {
+	PlantGlassApp,
+	type PlantGlassPage,
+} from "./pages/PlantGlassApp";
 import type {
+	AppMode,
 	DayOverride,
 	DaySummary,
 	LeaveEntry,
@@ -43,6 +51,7 @@ import {
 import { getLeaveEntries } from "./db/leaveEntries";
 import { SessionGuards } from "./components/SessionGuards";
 import { getSettings } from "./db/settings";
+import { getPlants, getPlantGlassSettings } from "./db/plants";
 import {
 	getMonthDates,
 	getWeekDates,
@@ -58,9 +67,11 @@ import { formatMinutes } from "./lib/formatting";
 import { getRefreshIntervalMs } from "./lib/performanceMode";
 import {
 	getReminderDecisions,
+	getPlantReminderDecision,
 	resetReminderStateForNewSession,
 	type ReminderState,
 } from "./lib/reminders";
+import { getStoredAppMode, saveAppMode, toggleAppMode } from "./lib/appMode";
 import {
 	eachDateInRange,
 	findLeaveForDate,
@@ -97,6 +108,13 @@ const nav = [
 	{ page: "month", label: "Monat", icon: CalendarDays },
 	{ page: "year", label: "Jahr", icon: WalletCards },
 	{ page: "leave", label: "Urlaub", icon: Plane },
+	{ page: "settings", label: "Einstellungen", icon: SettingsIcon },
+] as const;
+
+const plantNav = [
+	{ page: "overview", label: "Übersicht", icon: Leaf },
+	{ page: "plants", label: "Pflanzen", icon: Sprout },
+	{ page: "care-history", label: "Pflegeverlauf", icon: History },
 	{ page: "settings", label: "Einstellungen", icon: SettingsIcon },
 ] as const;
 
@@ -173,7 +191,11 @@ function activeSessionMinutes(
 }
 
 export function App() {
+	const [appMode, setAppMode] = useState<AppMode>(() =>
+		getStoredAppMode(localStorage),
+	);
 	const [page, setPage] = useState<Page>("dashboard");
+	const [plantPage, setPlantPage] = useState<PlantGlassPage>("overview");
 	const [selectedMonth, setSelectedMonth] = useState(() => new Date());
 	const [data, setData] = useState<AppData | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -186,6 +208,14 @@ export function App() {
 	const lastCloseToTray = useRef<boolean | null>(null);
 	const lastTrayLeftClick = useRef<boolean | null>(null);
 	const backupDone = useRef(false);
+
+	const switchMode = useCallback(() => {
+		setAppMode((current) => {
+			const next = toggleAppMode(current);
+			saveAppMode(next, localStorage);
+			return next;
+		});
+	}, []);
 
 	// Abgeleiteter, primitiver Wert: aendert die Effekt-Dependency nur, wenn sich der
 	// Status tatsaechlich umschaltet – nicht bei jeder neuen entries-Array-Identitaet.
@@ -360,6 +390,34 @@ export function App() {
 	}, [liveData, tick]);
 
 	useEffect(() => {
+		const state = JSON.parse(
+			localStorage.getItem("timeglass.reminderState") ?? "{}",
+		) as ReminderState;
+		void Promise.all([getPlantGlassSettings(), getPlants(false)]).then(
+			([plantSettings, plants]) => {
+				const decision = getPlantReminderDecision(
+					plantSettings,
+					plants,
+					state,
+					tick,
+				);
+				if (!decision) return;
+				void isPermissionGranted().then((granted) => {
+					if (!granted) return;
+					sendNotification({ title: decision.title, body: decision.body });
+					localStorage.setItem(
+						"timeglass.reminderState",
+						JSON.stringify({
+							...state,
+							[decision.key]: decision.date,
+						}),
+					);
+				});
+			},
+		).catch(() => undefined);
+	}, [tick]);
+
+	useEffect(() => {
 		if (!liveData) return;
 		const activeEntry =
 			liveData.entries.find((entry) => !entry.end_time) ?? null;
@@ -428,12 +486,9 @@ export function App() {
 					data.settings.globalShortcutEnabled &&
 					data.settings.globalShortcutAccelerator
 				) {
-					await register(
-						data.settings.globalShortcutAccelerator,
-						(event) => {
-							if (event.state === "Pressed") void togglePunch();
-						},
-					);
+					await register(data.settings.globalShortcutAccelerator, (event) => {
+						if (event.state === "Pressed") void togglePunch();
+					});
 				}
 			} catch {
 				/* ungueltiges Tastenkuerzel ignorieren */
@@ -454,10 +509,7 @@ export function App() {
 		if (!data || backupDone.current) return;
 		backupDone.current = true;
 		if (!data.settings.autoBackupEnabled) return;
-		const label = new Date()
-			.toISOString()
-			.slice(0, 16)
-			.replace(/[:T]/g, "-");
+		const label = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
 		void invoke("create_db_backup", {
 			retention: data.settings.autoBackupRetention,
 			label,
@@ -465,6 +517,7 @@ export function App() {
 	}, [data]);
 
 	const content = useMemo(() => {
+		if (appMode === "plantglass") return <PlantGlassApp page={plantPage} />;
 		if (!liveData)
 			return (
 				<div className="glass-panel state-panel">TimeGlass wird geladen...</div>
@@ -494,7 +547,7 @@ export function App() {
 		if (page === "leave") return <LeavePage {...common} />;
 		if (page === "settings") return <SettingsPage {...common} />;
 		return <DashboardPage {...common} navigate={setPage} />;
-	}, [liveData, page, refresh, selectedMonth]);
+	}, [appMode, liveData, page, plantPage, refresh, selectedMonth]);
 
 	const weekTotal = data
 		? summarizePeriod(data.week, { settings: data.settings, kind: "week" })
@@ -505,40 +558,84 @@ export function App() {
 			: null;
 
 	return (
-		<div className="app-shell">
+		<div className={`app-shell ${appMode}`}>
 			<aside className="sidebar glass-panel">
-				<div className="brand">
-					<Clock3 size={30} aria-hidden="true" />
+				<button
+					type="button"
+					className="brand brand-switch"
+					title={
+						appMode === "timeglass"
+							? "Zu PlantGlass wechseln"
+							: "Zu TimeGlass wechseln"
+					}
+					aria-label={
+						appMode === "timeglass"
+							? "Zu PlantGlass wechseln"
+							: "Zu TimeGlass wechseln"
+					}
+					onClick={switchMode}
+				>
+					{appMode === "timeglass" ? (
+						<Clock3 size={30} aria-hidden="true" />
+					) : (
+						<Leaf size={30} aria-hidden="true" />
+					)}
 					<div>
-						<strong>TimeGlass</strong>
-						<span>Private Gleitzeit</span>
+						<strong>
+							{appMode === "timeglass" ? "TimeGlass" : "PlantGlass"}
+						</strong>
+						<span>
+							{appMode === "timeglass"
+								? "Private Gleitzeit"
+								: "Büro-Pflanzenpflege"}
+						</span>
 					</div>
-				</div>
+				</button>
 				<nav aria-label="Hauptnavigation">
-					{nav.map(({ page: navPage, label, icon: Icon }) => (
-						<button
-							type="button"
-							className={page === navPage ? "nav-item active" : "nav-item"}
-							key={navPage}
-							aria-current={page === navPage ? "page" : undefined}
-							aria-label={label}
-							onClick={() => {
-								if (navPage === "month") setSelectedMonth(new Date());
-								setPage(navPage);
-							}}
-						>
-							<Icon size={18} aria-hidden="true" />
-							<span>{label}</span>
-						</button>
-					))}
+					{appMode === "timeglass"
+						? nav.map(({ page: navPage, label, icon: Icon }) => (
+								<button
+									type="button"
+									className={
+										page === navPage ? "nav-item active" : "nav-item"
+									}
+									key={navPage}
+									aria-current={page === navPage ? "page" : undefined}
+									aria-label={label}
+									onClick={() => {
+										if (navPage === "month") setSelectedMonth(new Date());
+										setPage(navPage);
+									}}
+								>
+									<Icon size={18} aria-hidden="true" />
+									<span>{label}</span>
+								</button>
+							))
+						: plantNav.map(({ page: navPage, label, icon: Icon }) => (
+								<button
+									type="button"
+									className={
+										plantPage === navPage ? "nav-item active" : "nav-item"
+									}
+									key={navPage}
+									aria-current={plantPage === navPage ? "page" : undefined}
+									aria-label={label}
+									onClick={() => setPlantPage(navPage)}
+								>
+									<Icon size={18} aria-hidden="true" />
+									<span>{label}</span>
+								</button>
+							))}
 				</nav>
-				{todayRemaining != null && (
+				{appMode === "timeglass" && todayRemaining != null && (
 					<div className="sidebar-meta compact">
 						<span>Rest bis Tages-Soll</span>
 						<strong>{formatMinutes(todayRemaining)}</strong>
 					</div>
 				)}
-				{weekTotal && weekTotal.differenceMinutes != null && (
+				{appMode === "timeglass" &&
+					weekTotal &&
+					weekTotal.differenceMinutes != null && (
 					<div className="sidebar-meta">
 						<span>Wochenbilanz</span>
 						<strong>
@@ -547,10 +644,16 @@ export function App() {
 						</strong>
 					</div>
 				)}
+				{appMode === "plantglass" && (
+					<div className="sidebar-meta compact">
+						<span>Pflegeprinzip</span>
+						<strong>Erst prüfen</strong>
+					</div>
+				)}
 			</aside>
 			<main className="main-content">
 				{error && <div className="error-banner">{error}</div>}
-				{liveData && (
+				{appMode === "timeglass" && liveData && (
 					<SessionGuards
 						activeEntry={
 							liveData.entries.find((entry) => !entry.end_time) ?? null

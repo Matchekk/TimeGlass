@@ -1,4 +1,15 @@
-import type { DaySummary, Settings, TimeEntry } from "../types";
+import type {
+	DaySummary,
+	Plant,
+	PlantGlassSettings,
+	Settings,
+	TimeEntry,
+} from "../types";
+import {
+	isPlantDue,
+	plantReminderBody,
+	shouldSendPlantReminder,
+} from "./plantGlass";
 import { isLongActiveSession } from "./timeCalculations";
 
 export interface ReminderState {
@@ -6,12 +17,14 @@ export interface ReminderState {
   longSessionDate?: string;
   clockOutDate?: string;
   noTimeDate?: string;
+  plantCheckDate?: string;
 }
 
 export interface ReminderDecision {
   key: keyof ReminderState;
   title: string;
   body: string;
+  date?: string;
 }
 
 export function resetReminderStateForNewSession(date: string): void {
@@ -77,4 +90,29 @@ export function getReminderDecisions(
   }
 
   return decisions;
+}
+
+export function getPlantReminderDecision(
+	settings: PlantGlassSettings,
+	plants: Plant[],
+	state: ReminderState,
+	now = new Date(),
+): ReminderDecision | null {
+	const dueCount = plants.filter((plant) => isPlantDue(plant, now)).length;
+	if (
+		!shouldSendPlantReminder(
+			settings,
+			dueCount,
+			state.plantCheckDate,
+			now,
+		)
+	) {
+		return null;
+	}
+	return {
+		key: "plantCheckDate",
+		title: "PlantGlass: Pflanzen prüfen",
+		body: plantReminderBody(dueCount),
+		date: now.toISOString().slice(0, 10),
+	};
 }

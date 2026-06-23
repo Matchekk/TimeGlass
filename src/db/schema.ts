@@ -66,6 +66,26 @@ async function migrate(db: Database): Promise<void> {
   `);
 
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS plants (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      species TEXT,
+      location TEXT NOT NULL,
+      check_interval_days INTEGER NOT NULL DEFAULT 14,
+      near_heater INTEGER NOT NULL DEFAULT 0,
+      heater_sensitive INTEGER NOT NULL DEFAULT 0,
+      light_note TEXT,
+      last_checked_at TEXT,
+      last_watered_at TEXT,
+      snoozed_until TEXT,
+      notes TEXT NOT NULL DEFAULT '',
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  await db.execute(`
     CREATE INDEX IF NOT EXISTS idx_time_entries_start_time
     ON time_entries(start_time)
   `);
@@ -73,5 +93,10 @@ async function migrate(db: Database): Promise<void> {
   await db.execute(`
     CREATE INDEX IF NOT EXISTS idx_leave_entries_dates
     ON leave_entries(start_date, end_date)
+  `);
+
+  await db.execute(`
+    CREATE INDEX IF NOT EXISTS idx_plants_active_check
+    ON plants(active, last_checked_at, snoozed_until)
   `);
 }
